@@ -19,7 +19,7 @@ At its core, Maarif Schools exists to make collaboration easier. It helps educat
 - 💬 Community discussions for asking questions, sharing ideas, and replying in threads
 - ⭐ Bookmarking and likes to save and highlight useful content
 - 👤 Teacher profiles with subject, grade, and identity information
-- 🤖 AI-powered lesson generation for turning prompts into structured lesson plans
+- 🤖 Gemini-powered lesson generation for turning prompts into structured lesson plans
 
 ## How It Works
 
@@ -34,6 +34,29 @@ Over time, the platform becomes a living library of reusable knowledge where con
 Maarif Schools is built around a simple idea: great teaching knowledge should move freely between educators.
 
 The long-term goal is to support a global teacher collaboration network where educators can share what works, learn from one another, and spend less time rebuilding materials that already exist. By making collaboration easier, the platform aims to give teachers more time and energy for what matters most: better learning experiences for students.
+
+## Tech Stack
+
+- Next.js
+- Supabase
+- Tailwind CSS
+- Gemini API
+
+## Getting Started
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Create `.env.local` from `.env.example` and add your Supabase credentials and `GEMINI_API_KEY` before running the full platform locally.
 
 
 ## Contribution

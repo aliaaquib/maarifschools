@@ -44,60 +44,66 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Topic is required." }, { status: 400 });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ lessonPlan: buildFallbackLessonPlan(topic), source: "fallback" });
     }
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-5-mini",
-        input: [
+        contents: [
           {
-            role: "system",
-            content: [
+            role: "user",
+            parts: [
               {
-                type: "input_text",
                 text:
                   "You create Cambridge-style classroom lesson plans for teachers. Return plain text only. Structure the response with these headings: Topic, Learning objective, Success criteria, Starter, Teaching input, Guided practice, Independent practice, Assessment for learning, Differentiation, Plenary, Homework or next step. Keep the plan practical, concise, and classroom-ready.",
               },
-            ],
-          },
-          {
-            role: "user",
-            content: [
               {
-                type: "input_text",
                 text: `Create a Cambridge-style lesson plan from this teacher request: ${topic}`,
               },
             ],
           },
         ],
       }),
-    });
+    },
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
       return NextResponse.json(
         {
-          error: errorText || "OpenAI request failed.",
+          error: errorText || "Gemini request failed.",
         },
         { status: 502 },
       );
     }
 
     const payload = (await response.json()) as {
-      output_text?: string;
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{
+            text?: string;
+          }>;
+        };
+      }>;
     };
 
+    const lessonPlan =
+      payload.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text ?? "")
+        .join("\n")
+        .trim() || buildFallbackLessonPlan(topic);
+
     return NextResponse.json({
-      lessonPlan: payload.output_text ?? buildFallbackLessonPlan(topic),
-      source: "openai",
+      lessonPlan,
+      source: "gemini",
     });
   } catch (error) {
     return NextResponse.json(
