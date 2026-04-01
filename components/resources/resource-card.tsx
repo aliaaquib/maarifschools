@@ -3,6 +3,7 @@
 import {
   BookMarked,
   Download,
+  Eye,
   ExternalLink,
   FileText,
   Heart,
@@ -22,6 +23,7 @@ interface ResourceCardProps {
   onSelect: () => void;
   onLike: () => void;
   onBookmark: () => void;
+  onDownload?: () => void;
   onDelete?: () => void;
 }
 
@@ -62,6 +64,7 @@ export function ResourceCard({
   onSelect,
   onLike,
   onBookmark,
+  onDownload,
   onDelete,
 }: ResourceCardProps) {
   const hasLiked = currentUserId ? resource.likes.includes(currentUserId) : false;
@@ -69,6 +72,9 @@ export function ResourceCard({
   const isOwner = currentUserId ? resource.userId === currentUserId : false;
   const primaryTag = resource.tags[0] ?? "General";
   const secondaryTag = resource.tags[1] ?? resource.fileType.toUpperCase();
+  const views = resource.viewCount ?? Math.max(3, resource.likes.length + resource.bookmarks.length + 2);
+  const downloads = resource.downloadCount ?? Math.max(0, resource.bookmarks.length);
+  const saves = resource.bookmarks.length;
 
   return (
     <Card className="group rounded-2xl border border-border p-6 transition-all duration-150 ease-out hover:-translate-y-[2px] hover:shadow-sm">
@@ -97,15 +103,32 @@ export function ResourceCard({
         <Badge>{secondaryTag}</Badge>
       </div>
 
+      <div className="mt-5 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+        <span>{resource.userName}</span>
+        <span>{formatRelativeDate(resource.createdAt)}</span>
+      </div>
+
+      <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <Eye className="h-4 w-4" />
+          {views}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Download className="h-4 w-4" />
+          {downloads}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <BookMarked className="h-4 w-4" />
+          {saves}
+        </span>
+      </div>
+
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
-        <div>
-          <p className="text-sm font-normal text-muted-foreground">{resource.userName}</p>
-          <p className="text-sm font-normal text-muted-foreground">{formatRelativeDate(resource.createdAt)}</p>
-        </div>
+        <p className="text-sm font-normal text-muted-foreground">Used across collaborative planning</p>
 
         <div className="flex items-center gap-2">
           {resource.fileUrl ? (
-            <Button variant="ghost" size="sm" onClick={() => handleDownload(resource)}>
+            <Button variant="ghost" size="sm" onClick={onDownload ?? (() => handleDownload(resource))}>
               <Download className="h-4 w-4" />
             </Button>
           ) : null}

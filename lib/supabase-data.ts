@@ -1,6 +1,6 @@
 import { RealtimeChannel } from "@supabase/supabase-js";
 
-import { CreateResourceInput, DiscussionComment, DiscussionPost, ResourceRecord, UserProfile } from "@/types";
+import { CreateResourceInput, DiscussionComment, DiscussionPost, ResourceRecord, SchoolMessage, SchoolRecord, UserProfile } from "@/types";
 import { GUEST_USER_ID, supabase } from "@/lib/supabase";
 
 type Row = Record<string, unknown>;
@@ -34,6 +34,30 @@ function normalizeUserProfile(raw: Row): UserProfile {
     avatar: raw.avatar ? String(raw.avatar) : null,
     subject: String(raw.subject ?? ""),
     grade: String(raw.grade ?? ""),
+    schoolId: raw.school_id ? String(raw.school_id) : null,
+    schoolName: raw.school_name ? String(raw.school_name) : null,
+    createdAt: toIsoDate(raw.created_at),
+  };
+}
+
+function normalizeSchool(raw: Row): SchoolRecord {
+  return {
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? ""),
+    createdAt: toIsoDate(raw.created_at),
+  };
+}
+
+function normalizeSchoolMessage(raw: Row): SchoolMessage {
+  const user = raw.users as Row | null | undefined;
+
+  return {
+    id: String(raw.id ?? ""),
+    schoolId: String(raw.school_id ?? ""),
+    userId: String(raw.user_id ?? ""),
+    userName: String(user?.name ?? "Teacher"),
+    userAvatar: user?.avatar ? String(user.avatar) : null,
+    content: String(raw.content ?? ""),
     createdAt: toIsoDate(raw.created_at),
   };
 }
@@ -83,6 +107,7 @@ function normalizeResource(raw: Row): ResourceRecord {
     tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === "string") : [],
     userId: String(raw.user_id ?? ""),
     userName: String(user?.name ?? "Teacher"),
+    schoolId: raw.school_id ? String(raw.school_id) : null,
     createdAt: toIsoDate(raw.created_at),
     fileName: raw.file_name ? String(raw.file_name) : undefined,
     filePath: latestVersion?.storage_path ? String(latestVersion.storage_path) : undefined,
@@ -110,7 +135,31 @@ function createRealtimeChannel(
   };
 }
 
-export async function ensureUserProfile(profile: Omit<UserProfile, "createdAt">) {
+export async function getSchools() {
+  const { data, error } = await supabase.from("schools").select("*").order("name", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => normalizeSchool(row as Row));
+}
+
+async function getSchoolNameById(schoolId: string | null | undefined) {
+  if (!schoolId) {
+    return null;
+  }
+
+  const { data, error } = await supabase.from("schools").select("name").eq("id", schoolId).maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data?.name ? String(data.name) : null;
+}
+
+export async function createUserProfile(profile: Omit<UserProfile, "createdAt">) {
   const payload = {
     id: profile.uid,
     email: profile.email,
@@ -118,29 +167,44 @@ export async function ensureUserProfile(profile: Omit<UserProfile, "createdAt">)
     subject: profile.subject,
     grade: profile.grade,
     avatar: profile.avatar ?? null,
+    school_id: profile.schoolId ?? null,
   };
 
   const { data, error } = await supabase
     .from("users")
     .upsert(payload, { onConflict: "id" })
-    .select()
+    .select("*")
     .single();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return normalizeUserProfile(data as Row);
+  const schoolName = await getSchoolNameById(profile.schoolId);
+  return normalizeUserProfile({ ...(data as Row), school_name: schoolName });
+}
+
+export async function ensureUserProfile(profile: Omit<UserProfile, "createdAt">) {
+  return createUserProfile(profile);
 }
 
 export async function getUserProfile(uid: string) {
-  const { data, error } = await supabase.from("users").select("*").eq("id", uid).maybeSingle();
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", uid)
+    .maybeSingle();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data ? normalizeUserProfile(data as Row) : null;
+  if (!data) {
+    return null;
+  }
+
+  const schoolName = await getSchoolNameById(data.school_id ? String(data.school_id) : null);
+  return normalizeUserProfile({ ...(data as Row), school_name: schoolName });
 }
 
 export async function updateUser(uid: string, updates: Partial<Omit<UserProfile, "uid" | "createdAt">>) {
@@ -156,14 +220,59 @@ export async function updateUser(uid: string, updates: Partial<Omit<UserProfile,
     .from("users")
     .update(payload)
     .eq("id", uid)
-    .select()
+    .select("*")
     .single();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return normalizeUserProfile(data as Row);
+  const schoolName = await getSchoolNameById(data.school_id ? String(data.school_id) : null);
+  return normalizeUserProfile({ ...(data as Row), school_name: schoolName });
+}
+
+export function getSchoolMessages(
+  schoolId: string,
+  onData: (messages: SchoolMessage[]) => void,
+  onError: (error: Error) => void,
+) {
+  const refresh = async () => {
+    const { data, error } = await supabase
+      .from("school_messages")
+      .select("id, school_id, user_id, content, created_at, users(name, avatar)")
+      .eq("school_id", schoolId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      onError(new Error(error.message));
+      return;
+    }
+
+    onData((data ?? []).map((row) => normalizeSchoolMessage(row as Row)));
+  };
+
+  void refresh();
+  return createRealtimeChannel("school-messages-feed", "school_messages", refresh);
+}
+
+export async function createSchoolMessage(input: { schoolId: string; userId: string; content: string }) {
+  const { data, error } = await supabase
+    .from("school_messages")
+    .insert([
+      {
+        school_id: input.schoolId,
+        user_id: input.userId,
+        content: input.content,
+      },
+    ])
+    .select("id, school_id, user_id, content, created_at, users(name, avatar)")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Could not send message.");
+  }
+
+  return normalizeSchoolMessage(data as Row);
 }
 
 export async function uploadAvatar(userId: string, file: File) {
@@ -268,11 +377,16 @@ export function getComments(onData: (comments: DiscussionComment[]) => void, onE
   return createRealtimeChannel("comments-feed", "comments", refresh);
 }
 
-export function getResources(onData: (resources: ResourceRecord[]) => void, onError: (error: Error) => void) {
+export function getResourcesBySchool(
+  schoolId: string,
+  onData: (resources: ResourceRecord[]) => void,
+  onError: (error: Error) => void,
+) {
   const refresh = async () => {
     const { data, error } = await supabase
       .from("resources")
-      .select("id, title, description, user_id, file_type, tags, file_name, likes, bookmarks, created_at, users(name, avatar), resource_versions(file_url, storage_path, created_at)")
+      .select("id, title, description, user_id, school_id, file_type, tags, file_name, likes, bookmarks, created_at, users(name, avatar), resource_versions(file_url, storage_path, created_at)")
+      .eq("school_id", schoolId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -287,7 +401,7 @@ export function getResources(onData: (resources: ResourceRecord[]) => void, onEr
   return createRealtimeChannel("resources-feed", "resources", refresh);
 }
 
-export async function uploadResource(input: CreateResourceInput & { userId: string; userName: string }) {
+export async function createResource(input: CreateResourceInput & { userId: string; userName: string; schoolId: string }) {
   let fileUrl = input.externalUrl ?? "";
   let storagePath = "";
 
@@ -314,6 +428,7 @@ export async function uploadResource(input: CreateResourceInput & { userId: stri
         title: input.title,
         description: input.description,
         user_id: input.userId,
+        school_id: input.schoolId,
         file_type: detectFileType(input),
         tags,
         file_name: input.file?.name ?? null,
@@ -339,6 +454,10 @@ export async function uploadResource(input: CreateResourceInput & { userId: stri
   if (versionError) {
     throw new Error(versionError.message);
   }
+}
+
+export async function uploadResource(input: CreateResourceInput & { userId: string; userName: string; schoolId: string }) {
+  return createResource(input);
 }
 
 export async function toggleResourceReaction(

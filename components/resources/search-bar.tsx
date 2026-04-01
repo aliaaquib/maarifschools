@@ -10,10 +10,11 @@ import { Input } from "@/components/ui/input";
 
 interface SearchBarProps {
   filters: ResourceFilters;
+  schoolName?: string | null;
   onFiltersChange: (filters: ResourceFilters) => void;
 }
 
-export function SearchBar({ filters, onFiltersChange }: SearchBarProps) {
+export function SearchBar({ filters, schoolName, onFiltersChange }: SearchBarProps) {
   const deferredSearch = useDeferredValue(filters.search);
 
   return (
@@ -38,6 +39,11 @@ export function SearchBar({ filters, onFiltersChange }: SearchBarProps) {
         <p className="text-sm font-normal text-muted-foreground">
           {deferredSearch ? `Searching for “${deferredSearch}”` : "Browse everything"}
         </p>
+        {schoolName ? (
+          <p className="text-sm font-normal text-muted-foreground">
+            Showing resources from {schoolName}
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-2">

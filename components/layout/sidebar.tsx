@@ -8,6 +8,7 @@ import { NAV_ITEMS, NavigationItemId } from "@/lib/constants";
 
 interface SidebarProps {
   activeItem: NavigationItemId;
+  schoolName?: string | null;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onNavigate: (id: NavigationItemId) => void;
@@ -69,12 +70,14 @@ function SidebarInner({
   isCollapsed,
   onNavigate,
   onToggleCollapse,
+  schoolName,
   mobile,
 }: {
   activeItem: NavigationItemId;
   isCollapsed: boolean;
   onNavigate: (id: NavigationItemId) => void;
   onToggleCollapse: () => void;
+  schoolName?: string | null;
   mobile?: boolean;
 }) {
   return (
@@ -98,6 +101,7 @@ function SidebarInner({
           <div className={cn("transition-all", isCollapsed && !mobile && "hidden")}>
             <p className="text-sm font-semibold text-foreground">Maarif Schools</p>
             <p className="text-sm font-normal text-muted-foreground">Teacher workspace</p>
+            {schoolName ? <p className="text-sm font-normal text-muted-foreground">{schoolName}</p> : null}
           </div>
         </div>
 
@@ -134,6 +138,7 @@ export function Sidebar(props: SidebarProps) {
       <aside className="hidden h-screen shrink-0 lg:sticky lg:top-0 lg:block">
         <SidebarInner
           activeItem={props.activeItem}
+          schoolName={props.schoolName}
           isCollapsed={props.isCollapsed}
           onNavigate={props.onNavigate}
           onToggleCollapse={props.onToggleCollapse}
@@ -156,6 +161,7 @@ export function Sidebar(props: SidebarProps) {
       >
         <SidebarInner
           activeItem={props.activeItem}
+          schoolName={props.schoolName}
           isCollapsed={false}
           onNavigate={(id) => {
             props.onNavigate(id);

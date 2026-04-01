@@ -21,6 +21,12 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [subject, setSubject] = useState("");
+  const [grade, setGrade] = useState("");
+  const [externalUrl, setExternalUrl] = useState("");
 
   const fileLabel = useMemo(() => {
     if (file) {
@@ -33,9 +39,28 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
   useEffect(() => {
     if (!open) {
       setError("");
+      setSuccess("");
       setIsDragging(false);
     }
   }, [open]);
+
+  useEffect(() => {
+    const source = `${title} ${file?.name ?? ""}`.toLowerCase();
+
+    if (!subject) {
+      const matchedSubject = SUBJECT_OPTIONS.find((option) => source.includes(option.toLowerCase()));
+      if (matchedSubject) {
+        setSubject(matchedSubject);
+      }
+    }
+
+    if (!grade) {
+      const matchedGrade = GRADE_OPTIONS.find((option) => source.includes(option.toLowerCase()));
+      if (matchedGrade) {
+        setGrade(matchedGrade);
+      }
+    }
+  }, [file, grade, subject, title]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,9 +80,15 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
 
     try {
       await onSubmit(payload);
+      setSuccess("Resource uploaded successfully.");
       form.reset();
       setFile(null);
-      onClose();
+      setTitle("");
+      setDescription("");
+      setSubject("");
+      setGrade("");
+      setExternalUrl("");
+      window.setTimeout(() => onClose(), 600);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -103,15 +134,33 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Input name="title" placeholder="Resource title" required />
-            <Input name="externalUrl" placeholder="External link (optional)" />
+            <Input name="title" placeholder="Resource title" required value={title} onChange={(event) => setTitle(event.target.value)} />
+            <Input
+              name="externalUrl"
+              placeholder="External link (optional)"
+              value={externalUrl}
+              onChange={(event) => setExternalUrl(event.target.value)}
+            />
           </div>
 
-          <Textarea name="description" placeholder="Short description" required />
+          <Textarea
+            name="description"
+            placeholder="Short description"
+            required
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Select name="subject" options={SUBJECT_OPTIONS} placeholder="Select subject" required />
-            <Select name="grade" options={GRADE_OPTIONS} placeholder="Select grade" required />
+            <Select name="subject" options={SUBJECT_OPTIONS} placeholder="Select subject" required value={subject} onChange={(event) => setSubject(event.target.value)} />
+            <Select name="grade" options={GRADE_OPTIONS} placeholder="Select grade" required value={grade} onChange={(event) => setGrade(event.target.value)} />
+          </div>
+
+          <div className="rounded-2xl border border-border bg-muted/60 p-4">
+            <p className="text-sm font-medium text-foreground">Discovery tip</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Clear titles and descriptions help other teachers discover your resource faster.
+            </p>
           </div>
 
           <label
@@ -137,6 +186,18 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
             </p>
           </label>
 
+          {subject || grade ? (
+            <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+              <span className="rounded-full border border-border bg-card px-3 py-1">
+                Suggested subject: {subject || "None yet"}
+              </span>
+              <span className="rounded-full border border-border bg-card px-3 py-1">
+                Suggested grade: {grade || "None yet"}
+              </span>
+            </div>
+          ) : null}
+
+          {success ? <p className="text-sm text-muted-foreground">{success}</p> : null}
           {error ? <p className="text-sm text-foreground/80">{error}</p> : null}
 
           <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end">

@@ -7,6 +7,24 @@ export interface UserProfile {
   avatar?: string | null;
   subject: string;
   grade: string;
+  schoolId?: string | null;
+  schoolName?: string | null;
+  createdAt: string;
+}
+
+export interface SchoolRecord {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface SchoolMessage {
+  id: string;
+  schoolId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string | null;
+  content: string;
   createdAt: string;
 }
 
@@ -19,12 +37,17 @@ export interface ResourceRecord {
   tags: string[];
   userId: string;
   userName: string;
+  schoolId?: string | null;
   createdAt: string;
   fileName?: string;
   filePath?: string;
   likes: string[];
   bookmarks: string[];
+  viewCount?: number;
+  downloadCount?: number;
 }
+
+export type CommunityCategory = "all" | "questions" | "ideas" | "resources";
 
 export interface CreateResourceInput {
   title: string;

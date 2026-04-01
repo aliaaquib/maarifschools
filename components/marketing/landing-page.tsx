@@ -1,6 +1,10 @@
+ "use client";
+
 import Link from "next/link";
 import { ArrowRight, Bot, FolderOpen, MessagesSquare, Search } from "lucide-react";
+import { useState } from "react";
 
+import { RoleSelectionModal } from "@/components/marketing/role-selection-modal";
 import { Button } from "@/components/ui/button";
 
 const features = [
@@ -33,6 +37,8 @@ const steps = [
 ];
 
 export function LandingPage() {
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
@@ -68,12 +74,10 @@ export function LandingPage() {
               Bring lesson materials, community knowledge, and planning tools into one calm workspace built for teachers.
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Link href="/signup">
-                <Button size="lg">
-                  Get Started
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+              <Button size="lg" onClick={() => setIsRoleModalOpen(true)}>
+                Get Started
+                <ArrowRight className="h-4 w-4" />
+              </Button>
               <Link href="/login">
                 <Button variant="outline" size="lg">
                   Login
@@ -138,12 +142,10 @@ export function LandingPage() {
               Join a workspace built for teachers who want to share knowledge, improve materials, and move faster together.
             </p>
             <div className="mt-8">
-              <Link href="/signup">
-                <Button size="lg">
-                  Get Started
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+              <Button size="lg" onClick={() => setIsRoleModalOpen(true)}>
+                Get Started
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </section>
@@ -165,6 +167,8 @@ export function LandingPage() {
           </div>
         </div>
       </footer>
+
+      <RoleSelectionModal open={isRoleModalOpen} onClose={() => setIsRoleModalOpen(false)} />
     </div>
   );
 }

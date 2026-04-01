@@ -4,7 +4,7 @@ import { User } from "@supabase/supabase-js";
 import { createContext, useEffect, useMemo, useState } from "react";
 import type React from "react";
 
-import { ensureUserProfile, getUserProfile, updateUser } from "@/lib/supabase-data";
+import { createUserProfile, ensureUserProfile, getUserProfile, updateUser } from "@/lib/supabase-data";
 import { GUEST_USER_ID, isSupabaseConfigured, missingSupabaseEnvVars, supabase } from "@/lib/supabase";
 import { UserProfile } from "@/types";
 
@@ -16,6 +16,7 @@ interface AuthContextValue {
     name: string;
     email: string;
     password: string;
+    schoolId: string;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   signIn: (payload: { email: string; password: string }) => Promise<void>;
   saveProfile: (payload: {
@@ -38,6 +39,8 @@ function createFallbackProfile(user: User | null): UserProfile {
       avatar: null,
       subject: "",
       grade: "",
+      schoolId: null,
+      schoolName: null,
       createdAt: new Date().toISOString(),
     };
   }
@@ -52,6 +55,11 @@ function createFallbackProfile(user: User | null): UserProfile {
     avatar: user.user_metadata?.avatar_url ?? null,
     subject: "",
     grade: "",
+    schoolId:
+      typeof user.user_metadata?.school_id === "string"
+        ? user.user_metadata.school_id
+        : null,
+    schoolName: null,
     createdAt: new Date().toISOString(),
   };
 }
@@ -94,6 +102,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             avatar: fallbackProfile.avatar,
             subject: fallbackProfile.subject,
             grade: fallbackProfile.grade,
+            schoolId: fallbackProfile.schoolId,
+            schoolName: fallbackProfile.schoolName,
           });
           setProfile(createdProfile);
         }
@@ -124,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       profile,
       loading,
-      async signUp({ name, email, password }) {
+      async signUp({ name, email, password, schoolId }) {
         if (!isSupabaseConfigured) {
           throw new Error(`Missing Supabase env vars: ${missingSupabaseEnvVars.join(", ")}`);
         }
@@ -136,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             options: {
               data: {
                 name,
+                school_id: schoolId,
               },
             },
           });
@@ -146,13 +157,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           const nextUser = data.user;
           if (nextUser) {
-            const savedProfile = await ensureUserProfile({
+            const savedProfile = await createUserProfile({
               uid: nextUser.id,
               name,
               email,
               avatar: null,
               subject: "",
               grade: "",
+              schoolId,
+              schoolName: null,
             });
             setProfile(savedProfile);
           }

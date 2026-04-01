@@ -46,11 +46,42 @@ create table if not exists resource_versions (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists schools (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  created_at timestamp with time zone default now()
+);
+
 alter table users enable row level security;
 alter table posts enable row level security;
 alter table comments enable row level security;
 alter table resources enable row level security;
 alter table resource_versions enable row level security;
+alter table posts add column if not exists likes uuid[] default '{}'::uuid[];
+alter table posts add column if not exists bookmarks uuid[] default '{}'::uuid[];
+alter table users add column if not exists avatar text;
+alter table users add column if not exists subject text;
+alter table users add column if not exists grade text;
+
+alter table posts add column if not exists likes uuid[] default '{}'::uuid[];
+alter table posts add column if not exists bookmarks uuid[] default '{}'::uuid[];
+
+alter table resources add column if not exists file_type text;
+alter table resources add column if not exists file_name text;
+alter table resources add column if not exists tags text[] default '{}'::text[];
+alter table resources add column if not exists likes uuid[] default '{}'::uuid[];
+alter table resources add column if not exists bookmarks uuid[] default '{}'::uuid[];
+
+alter table resource_versions add column if not exists storage_path text;
+
+alter table schools enable row level security;
+
+drop policy if exists "schools_dev_all" on schools;
+create policy "schools_dev_all" on schools for all using (true) with check (true);
+
+alter table users add column if not exists school_id uuid references schools(id) on delete set null;
+alter table resources add column if not exists school_id uuid references schools(id) on delete set null;
+
 
 drop policy if exists "users_dev_all" on users;
 create policy "users_dev_all" on users for all using (true) with check (true);

@@ -17,9 +17,14 @@ interface ResourcesPanelProps {
   hasActiveFilters?: boolean;
   currentUserId?: string;
   selectedResource: ResourceRecord | null;
+  summaryStats?: Array<{ label: string; value: string | number }>;
+  featuredSections?: Array<{ title: string; description: string; resources: ResourceRecord[] }>;
+  emptyDescription?: string;
+  showResourceGrid?: boolean;
   onSelectResource: (resource: ResourceRecord) => void;
   onLike: (resource: ResourceRecord) => void;
   onBookmark: (resource: ResourceRecord) => void;
+  onDownload?: (resource: ResourceRecord) => void;
   onDelete?: (resource: ResourceRecord) => void;
   onOpenUpload?: () => void;
 }
@@ -32,9 +37,14 @@ export function ResourcesPanel({
   hasActiveFilters,
   currentUserId,
   selectedResource,
+  summaryStats,
+  featuredSections,
+  emptyDescription,
+  showResourceGrid = true,
   onSelectResource,
   onLike,
   onBookmark,
+  onDownload,
   onDelete,
   onOpenUpload,
 }: ResourcesPanelProps) {
@@ -46,7 +56,48 @@ export function ResourcesPanel({
           <p className="max-w-2xl text-sm font-normal text-muted-foreground">{description}</p>
         </div>
 
-        {loading ? (
+        {summaryStats?.length ? (
+          <div className="grid gap-4 md:grid-cols-3">
+            {summaryStats.map((stat) => (
+              <div key={stat.label} className="rounded-2xl border border-border bg-card p-5">
+                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {featuredSections?.length ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {featuredSections.map((section) => (
+              <div key={section.title} className="rounded-2xl border border-border bg-card p-6">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">{section.title}</p>
+                  <p className="text-sm text-muted-foreground">{section.description}</p>
+                </div>
+                <div className="mt-5 space-y-3">
+                  {section.resources.length > 0 ? section.resources.map((resource) => (
+                    <button
+                      key={resource.id}
+                      className="flex w-full items-start justify-between rounded-xl border border-border bg-background px-4 py-3 text-left transition hover:-translate-y-[1px] hover:bg-muted/40"
+                      onClick={() => onSelectResource(resource)}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{resource.title}</p>
+                        <p className="mt-1 truncate text-sm text-muted-foreground">{resource.userName}</p>
+                      </div>
+                      <span className="text-sm text-muted-foreground">{resource.bookmarks.length} saves</span>
+                    </button>
+                  )) : (
+                    <p className="text-sm text-muted-foreground">Nothing here yet.</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {showResourceGrid ? loading ? (
           <div className="grid gap-4 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="rounded-2xl border border-border bg-card p-6">
@@ -68,7 +119,7 @@ export function ResourcesPanel({
             description={
               hasActiveFilters
                 ? "Try a different search term or clear one of the filters."
-                : "Your workspace is ready. Add the first teaching resource to start building a shared library."
+                : (emptyDescription ?? "No resources yet. Be the first to contribute.")
             }
             action={
               onOpenUpload && !hasActiveFilters ? (
@@ -89,14 +140,21 @@ export function ResourcesPanel({
                 onSelect={() => onSelectResource(resource)}
                 onLike={() => onLike(resource)}
                 onBookmark={() => onBookmark(resource)}
+                onDownload={onDownload ? () => onDownload(resource) : undefined}
                 onDelete={onDelete ? () => onDelete(resource) : undefined}
               />
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
-      <ResourceDetail resource={selectedResource} currentUserId={currentUserId} onDelete={onDelete} />
+      <ResourceDetail
+        resource={selectedResource}
+        currentUserId={currentUserId}
+        onDownload={onDownload}
+        onOpen={onSelectResource}
+        onDelete={onDelete}
+      />
     </div>
   );
 }

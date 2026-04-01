@@ -4,7 +4,10 @@ import {
   Bookmark,
   BookMarked,
   Heart,
+  Lightbulb,
   MessageCircleMore,
+  MessageSquareDashed,
+  Paperclip,
   Reply,
   Send,
   Share2,
@@ -16,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
-import { DiscussionComment, DiscussionPost } from "@/types";
+import { CommunityCategory, DiscussionComment, DiscussionPost } from "@/types";
 import { formatRelativeDate, initials } from "@/lib/utils";
 
 interface CommunityPanelProps {
@@ -56,10 +59,27 @@ export function CommunityPanel({
 }: CommunityPanelProps) {
   const postComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<CommunityCategory>("all");
   const [submittingPost, setSubmittingPost] = useState(false);
   const [submittingCommentFor, setSubmittingCommentFor] = useState<string | null>(null);
   const [postError, setPostError] = useState("");
   const [commentError, setCommentError] = useState("");
+
+  const categoryTabs: Array<{ id: CommunityCategory; label: string }> = [
+    { id: "all", label: "All" },
+    { id: "questions", label: "Questions" },
+    { id: "ideas", label: "Ideas" },
+    { id: "resources", label: "Resources" },
+  ];
+
+  function detectCategory(post: DiscussionPost): CommunityCategory {
+    const content = post.content.toLowerCase();
+    if (content.includes("?")) return "questions";
+    if (content.includes("resource") || content.includes("worksheet") || content.includes("lesson plan") || content.includes("pdf")) {
+      return "resources";
+    }
+    return "ideas";
+  }
 
   const commentsByPostId = useMemo(() => {
     return comments.reduce<Record<string, DiscussionComment[]>>((accumulator, comment) => {
@@ -67,6 +87,14 @@ export function CommunityPanel({
       return accumulator;
     }, {});
   }, [comments]);
+
+  const filteredPosts = useMemo(() => {
+    if (activeCategory === "all") {
+      return posts;
+    }
+
+    return posts.filter((post) => detectCategory(post) === activeCategory);
+  }, [activeCategory, posts]);
 
   async function handlePostSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -134,13 +162,40 @@ export function CommunityPanel({
         <p className="max-w-2xl text-sm font-normal text-muted-foreground">{description}</p>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {categoryTabs.map((tab) => (
+          <Button
+            key={tab.id}
+            variant={activeCategory === tab.id ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setActiveCategory(tab.id)}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
+
       {showComposer ? (
         <Card className="p-6">
           <form className="space-y-4" onSubmit={handlePostSubmit}>
+            <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1">
+                <MessageSquareDashed className="h-4 w-4" />
+                Ask how others teach a topic
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1">
+                <Lightbulb className="h-4 w-4" />
+                Share a useful teaching idea
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1">
+                <Paperclip className="h-4 w-4" />
+                Post a resource tip
+              </span>
+            </div>
             <Textarea
               ref={postComposerRef}
               name="content"
-              placeholder="Share an update, ask for help, or start a discussion..."
+              placeholder="Ask how others teach a topic, or share a useful teaching idea..."
               required
             />
             {postError ? <p className="text-sm text-foreground/80">{postError}</p> : null}
@@ -162,7 +217,7 @@ export function CommunityPanel({
             </Card>
           ))}
         </div>
-      ) : posts.length === 0 ? (
+      ) : filteredPosts.length === 0 ? (
         <EmptyState
           icon={MessageCircleMore}
           title={emptyTitle}
@@ -173,7 +228,7 @@ export function CommunityPanel({
         />
       ) : (
         <div className="space-y-4">
-          {posts.map((post) => {
+          {filteredPosts.map((post) => {
             const threadComments = commentsByPostId[post.id] ?? [];
             const isExpanded = expandedPostId === post.id;
             const hasLiked = post.likes.includes(currentUserId);
@@ -221,7 +276,7 @@ export function CommunityPanel({
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setExpandedPostId(isExpanded ? null : post.id)}>
                       <Reply className="h-4 w-4" />
-                      {threadComments.length > 0 ? threadComments.length : "Reply"}
+                      {threadComments.length > 0 ? `${threadComments.length} replies` : "Reply"}
                     </Button>
                     <Button
                       variant={hasBookmarked ? "secondary" : "ghost"}

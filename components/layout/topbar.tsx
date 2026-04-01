@@ -11,6 +11,7 @@ interface TopbarProps {
   search: string;
   onSearchChange: (value: string) => void;
   onOpenLessonPlanner: () => void;
+  schoolName?: string | null;
   isMobileSidebarOpen: boolean;
   onToggleMobileSidebar: () => void;
 }
@@ -19,6 +20,7 @@ export function Topbar({
   search,
   onSearchChange,
   onOpenLessonPlanner,
+  schoolName,
   isMobileSidebarOpen,
   onToggleMobileSidebar,
 }: TopbarProps) {
@@ -40,6 +42,12 @@ export function Topbar({
         <Sparkles className="h-4 w-4" />
         Lesson planning
       </Button>
+
+      {schoolName ? (
+        <div className="hidden rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground md:block">
+          {schoolName}
+        </div>
+      ) : null}
 
       <ThemeToggle />
     </header>

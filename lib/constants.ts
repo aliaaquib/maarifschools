@@ -1,9 +1,11 @@
 import {
   BookMarked,
-  Bookmark,
+  ChartColumnBig,
   FolderKanban,
   LayoutGrid,
   MessageSquareText,
+  School,
+  Sparkles,
   Upload,
   UserCircle2,
 } from "lucide-react";
@@ -34,9 +36,12 @@ export const GRADE_OPTIONS = [
 ];
 
 export const NAV_ITEMS = [
+  { id: "dashboard", label: "Dashboard", icon: ChartColumnBig },
   { id: "all", label: "All Resources", icon: LayoutGrid },
+  { id: "trending", label: "Trending", icon: Sparkles },
   { id: "mine", label: "My Resources", icon: FolderKanban },
   { id: "upload", label: "Upload", icon: Upload },
+  { id: "school-chat", label: "School Chat", icon: School },
   { id: "community", label: "Community", icon: MessageSquareText },
   { id: "bookmarks", label: "Bookmarks", icon: BookMarked },
   { id: "profile", label: "Profile", icon: UserCircle2 },

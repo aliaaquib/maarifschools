@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, ExternalLink, FileText, Sparkles, Trash2 } from "lucide-react";
+import { BookMarked, Download, ExternalLink, Eye, FileText, Sparkles, Trash2 } from "lucide-react";
 import { FormEvent, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,20 +13,27 @@ import { formatRelativeDate } from "@/lib/utils";
 interface ResourceDetailProps {
   resource: ResourceRecord | null;
   currentUserId?: string;
+  onDownload?: (resource: ResourceRecord) => void;
+  onOpen?: (resource: ResourceRecord) => void;
   onDelete?: (resource: ResourceRecord) => void;
 }
 
-export function ResourceDetail({ resource, currentUserId, onDelete }: ResourceDetailProps) {
+export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, onDelete }: ResourceDetailProps) {
   const [topic, setTopic] = useState("");
   const [lessonPlan, setLessonPlan] = useState("");
   const [loadingLesson, setLoadingLesson] = useState(false);
   const [error, setError] = useState("");
   const isOwner = resource && currentUserId ? resource.userId === currentUserId : false;
+  const views = resource?.viewCount ?? (resource ? Math.max(3, resource.likes.length + resource.bookmarks.length + 2) : 0);
+  const downloads = resource?.downloadCount ?? (resource ? Math.max(0, resource.bookmarks.length) : 0);
+  const usedBy = resource ? Math.max(1, new Set([...resource.likes, ...resource.bookmarks]).size) : 0;
 
   function handleDownload() {
     if (!resource?.fileUrl) {
       return;
     }
+
+    onDownload?.(resource);
 
     const link = document.createElement("a");
     link.href = resource.fileUrl;
@@ -159,6 +166,22 @@ export function ResourceDetail({ resource, currentUserId, onDelete }: ResourceDe
           <p className="mt-1 text-xs text-muted-foreground">
             Uploaded {formatRelativeDate(resource.createdAt)}
           </p>
+          <p className="mt-3 text-xs text-muted-foreground">File type: {resource.fileType.toUpperCase()}</p>
+          <div className="mt-4 grid grid-cols-3 gap-3 text-sm text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <Eye className="h-4 w-4" />
+              {views}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Download className="h-4 w-4" />
+              {downloads}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <BookMarked className="h-4 w-4" />
+              {resource.bookmarks.length}
+            </span>
+          </div>
+          <p className="mt-4 text-sm text-foreground">Used by {usedBy} teachers</p>
         </div>
 
         <div className="grid gap-2">
@@ -171,7 +194,10 @@ export function ResourceDetail({ resource, currentUserId, onDelete }: ResourceDe
               <Button
                 variant="ghost"
                 className="w-full justify-start"
-                onClick={() => window.open(resource.fileUrl, "_blank", "noopener,noreferrer")}
+                onClick={() => {
+                  onOpen?.(resource);
+                  window.open(resource.fileUrl, "_blank", "noopener,noreferrer");
+                }}
               >
                 <ExternalLink className="h-4 w-4" />
                 Open in new tab
