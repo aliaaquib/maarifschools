@@ -30,6 +30,7 @@ import {
   ensureUserProfile,
   getComments,
   getResourcesBySchool,
+  getUserProfile,
   getSchoolMessages,
   getPosts,
   togglePostReaction,
@@ -104,7 +105,10 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
         avatar: user.user_metadata?.avatar_url ?? null,
         subject: "",
         grade: "",
-        schoolId: null,
+        schoolId:
+          typeof user.user_metadata?.school_id === "string"
+            ? user.user_metadata.school_id
+            : null,
         schoolName: null,
         createdAt: new Date().toISOString(),
       };
@@ -163,6 +167,8 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
     let unsubscribeResources: () => void = () => undefined;
 
     if (activeProfile.schoolId) {
+      setLoadingResources(true);
+      setLoadingSchoolChat(true);
       unsubscribeResources = getResourcesBySchool(
         activeProfile.schoolId,
         (nextResources) => {
@@ -325,6 +331,13 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       return;
     }
 
+    const existingProfile = await getUserProfile(user.id).catch(() => null);
+    const resolvedSchoolId =
+      activeProfile.schoolId ??
+      existingProfile?.schoolId ??
+      (typeof user.user_metadata?.school_id === "string" ? user.user_metadata.school_id : null);
+    const resolvedSchoolName = activeProfile.schoolName ?? existingProfile?.schoolName ?? null;
+
     await ensureUserProfile({
       uid: user.id,
       name: activeProfile.name,
@@ -332,8 +345,8 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       avatar: activeProfile.avatar ?? null,
       subject: activeProfile.subject,
       grade: activeProfile.grade,
-      schoolId: activeProfile.schoolId ?? null,
-      schoolName: activeProfile.schoolName ?? null,
+      schoolId: resolvedSchoolId,
+      schoolName: resolvedSchoolName,
     });
   }
 

@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { getSchools } from "@/lib/supabase-data";
+import { getSupabaseConnectionErrorMessage, isNetworkFetchError, isSupabaseConfigured } from "@/lib/supabase";
 import { SchoolRecord } from "@/types";
 
 interface AuthFormProps {
@@ -32,6 +33,19 @@ export function AuthForm({ mode }: AuthFormProps) {
     let cancelled = false;
 
     async function loadSchools() {
+      if (!cancelled) {
+        setLoadingSchools(true);
+        setError("");
+      }
+
+      if (!isSupabaseConfigured) {
+        if (!cancelled) {
+          setLoadingSchools(false);
+          setError(getSupabaseConnectionErrorMessage("load schools"));
+        }
+        return;
+      }
+
       try {
         const nextSchools = await getSchools();
         if (!cancelled) {
@@ -40,9 +54,11 @@ export function AuthForm({ mode }: AuthFormProps) {
       } catch (schoolError) {
         if (!cancelled) {
           setError(
-            schoolError instanceof Error
-              ? schoolError.message
-              : "We could not load schools right now.",
+            isNetworkFetchError(schoolError)
+              ? getSupabaseConnectionErrorMessage("load schools")
+              : schoolError instanceof Error
+                ? schoolError.message
+                : "We could not load schools right now.",
           );
         }
       } finally {
@@ -124,7 +140,7 @@ export function AuthForm({ mode }: AuthFormProps) {
             defaultValue=""
           >
             <option value="">
-              {loadingSchools ? "Loading schools..." : "Select School"}
+              {loadingSchools ? "Loading schools..." : error ? "Unable to load schools" : "Select School"}
             </option>
             {schools.map((school) => (
               <option key={school.id} value={school.id}>
@@ -141,6 +157,38 @@ export function AuthForm({ mode }: AuthFormProps) {
         ) : null}
         {success ? <p className="text-sm text-muted-foreground">{success}</p> : null}
         {error ? <p className="text-sm text-foreground/80">{error}</p> : null}
+        {mode === "signup" && error ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full"
+            onClick={() => {
+              setSchools([]);
+              setSuccess("");
+              setError("");
+              setLoadingSchools(true);
+              void (async () => {
+                try {
+                  const nextSchools = await getSchools();
+                  setSchools(nextSchools);
+                } catch (schoolError) {
+                  setError(
+                    isNetworkFetchError(schoolError)
+                      ? getSupabaseConnectionErrorMessage("load schools")
+                      : schoolError instanceof Error
+                        ? schoolError.message
+                        : "We could not load schools right now.",
+                  );
+                } finally {
+                  setLoadingSchools(false);
+                }
+              })();
+            }}
+            disabled={loadingSchools}
+          >
+            Retry loading schools
+          </Button>
+        ) : null}
 
         <Button
           className="w-full"

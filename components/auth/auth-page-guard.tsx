@@ -17,7 +17,7 @@ export function AuthPageGuard({ children }: { children: React.ReactNode }) {
     }
   }, [loading, router, user]);
 
-  if (isAuthRequired && isSupabaseConfigured && loading) {
+  if (isAuthRequired && isSupabaseConfigured && loading && user) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-6">
         <div className="space-y-3 text-center">

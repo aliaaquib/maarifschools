@@ -150,7 +150,11 @@ async function getSchoolNameById(schoolId: string | null | undefined) {
     return null;
   }
 
-  const { data, error } = await supabase.from("schools").select("name").eq("id", schoolId).maybeSingle();
+  const { data, error } = await supabase
+    .from("schools")
+    .select("name")
+    .eq("id", schoolId)
+    .maybeSingle<{ name: string | null }>();
 
   if (error) {
     throw new Error(error.message);

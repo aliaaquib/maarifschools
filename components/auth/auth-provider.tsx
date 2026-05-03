@@ -1,11 +1,18 @@
 "use client";
 
 import { User } from "@supabase/supabase-js";
-import { createContext, useEffect, useMemo, useState } from "react";
+import { createContext, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 
 import { createUserProfile, ensureUserProfile, getUserProfile, updateUser } from "@/lib/supabase-data";
-import { GUEST_USER_ID, isSupabaseConfigured, missingSupabaseEnvVars, supabase } from "@/lib/supabase";
+import {
+  GUEST_USER_ID,
+  getSupabaseConnectionErrorMessage,
+  isNetworkFetchError,
+  isSupabaseConfigured,
+  missingSupabaseEnvVars,
+  supabase,
+} from "@/lib/supabase";
 import { UserProfile } from "@/types";
 
 interface AuthContextValue {
@@ -64,7 +71,11 @@ function createFallbackProfile(user: User | null): UserProfile {
   };
 }
 
-function getReadableAuthError(error: unknown) {
+function getReadableAuthError(error: unknown, action: "create your account" | "sign you in") {
+  if (isNetworkFetchError(error)) {
+    return getSupabaseConnectionErrorMessage(action);
+  }
+
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
 }
 
@@ -72,6 +83,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const syncTokenRef = useRef(0);
+  const bootstrapCompleteRef = useRef(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -79,18 +92,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    if (typeof window !== "undefined") {
+      try {
+        const activeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const activeProjectRef = activeSupabaseUrl ? new URL(activeSupabaseUrl).hostname.split(".")[0] : null;
+
+        for (const key of Object.keys(window.localStorage)) {
+          if (
+            key.startsWith("sb-") &&
+            key.endsWith("-auth-token") &&
+            activeProjectRef &&
+            !key.includes(activeProjectRef)
+          ) {
+            window.localStorage.removeItem(key);
+          }
+        }
+      } catch {
+        // Ignore localStorage cleanup issues.
+      }
+    }
+
+    let isActive = true;
+
     const syncProfile = async (nextUser: User | null) => {
+      const syncToken = ++syncTokenRef.current;
+
       setUser(nextUser);
 
       if (!nextUser) {
-        setProfile(null);
-        setLoading(false);
+        if (isActive && syncToken === syncTokenRef.current) {
+          setProfile(null);
+          setLoading(false);
+        }
         return;
       }
 
+      const fallbackProfile = createFallbackProfile(nextUser);
+      if (isActive) {
+        setLoading(true);
+      }
+
       try {
-        const fallbackProfile = createFallbackProfile(nextUser);
         const existingProfile = await getUserProfile(nextUser.id);
+
+        if (!isActive || syncToken !== syncTokenRef.current) {
+          return;
+        }
 
         if (existingProfile) {
           setProfile(existingProfile);
@@ -105,26 +152,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             schoolId: fallbackProfile.schoolId,
             schoolName: fallbackProfile.schoolName,
           });
+          if (!isActive || syncToken !== syncTokenRef.current) {
+            return;
+          }
           setProfile(createdProfile);
         }
-      } catch {
-        setProfile(createFallbackProfile(nextUser));
+      } catch (error) {
+        console.error("Failed to sync Supabase user profile", error);
+        if (isActive && syncToken === syncTokenRef.current) {
+          if (isNetworkFetchError(error)) {
+            setProfile(null);
+            setUser(null);
+          } else {
+            setProfile(fallbackProfile);
+          }
+        }
       } finally {
-        setLoading(false);
+        if (isActive && syncToken === syncTokenRef.current) {
+          setLoading(false);
+        }
       }
     };
-
-    void supabase.auth.getUser().then(({ data }) => {
-      void syncProfile(data.user);
-    });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      bootstrapCompleteRef.current = true;
       void syncProfile(session?.user ?? null);
     });
 
+    const bootstrapAuth = async () => {
+      try {
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<null>((resolve) => {
+            window.setTimeout(() => resolve(null), 2000);
+          }),
+        ]);
+
+        if (!isActive || bootstrapCompleteRef.current) {
+          return;
+        }
+
+        bootstrapCompleteRef.current = true;
+
+        if (!sessionResult) {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        void syncProfile(sessionResult.data.session?.user ?? null);
+      } catch (error) {
+        console.error("Failed to bootstrap Supabase session", error);
+        if (!isActive || bootstrapCompleteRef.current) {
+          return;
+        }
+
+        bootstrapCompleteRef.current = true;
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
+    };
+
+    void bootstrapAuth();
+
     return () => {
+      isActive = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -167,6 +263,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               schoolId,
               schoolName: null,
             });
+            if (data.session) {
+              setUser(nextUser);
+              setLoading(false);
+            }
             setProfile(savedProfile);
           }
 
@@ -174,7 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             needsEmailConfirmation: !data.session,
           };
         } catch (error) {
-          throw new Error(getReadableAuthError(error));
+          throw new Error(getReadableAuthError(error, "create your account"));
         }
       },
       async signIn({ email, password }) {
@@ -192,7 +292,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             throw error;
           }
         } catch (error) {
-          throw new Error(getReadableAuthError(error));
+          throw new Error(getReadableAuthError(error, "sign you in"));
         }
       },
       async saveProfile({ name, subject, grade, avatar }) {
