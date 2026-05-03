@@ -63,10 +63,22 @@ function clearBrokenSupabaseSession() {
 
 export function getSupabaseConnectionErrorMessage(action: string) {
   if (!isSupabaseConfigured) {
-    return `Supabase is not configured yet. Missing: ${missingSupabaseEnvVars.join(", ")}.`;
+    return "This service is not ready yet. Please try again in a moment.";
   }
 
-  return `We couldn't ${action} because the Supabase project at ${supabaseHost} could not be reached. Check NEXT_PUBLIC_SUPABASE_URL and your network connection.`;
+  if (action === "load schools") {
+    return "We couldn't load schools right now. Please try again in a moment.";
+  }
+
+  if (action === "create your account") {
+    return "We couldn't create your account right now. Please try again in a moment.";
+  }
+
+  if (action === "sign you in") {
+    return "We couldn't sign you in right now. Please try again in a moment.";
+  }
+
+  return "We couldn't complete that request right now. Please try again in a moment.";
 }
 
 const supabaseFetch: typeof fetch = async (input, init) => {
