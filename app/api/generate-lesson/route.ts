@@ -76,10 +76,10 @@ export async function POST(request: NextRequest) {
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
+      console.error("Gemini request failed", await response.text());
       return NextResponse.json(
         {
-          error: errorText || "Gemini request failed.",
+          error: "We could not generate the lesson plan right now.",
         },
         { status: 502 },
       );
@@ -106,9 +106,10 @@ export async function POST(request: NextRequest) {
       source: "gemini",
     });
   } catch (error) {
+    console.error("Lesson generation failed", error);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unable to generate lesson plan.",
+        error: "We could not generate the lesson plan right now.",
       },
       { status: 500 },
     );

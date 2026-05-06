@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { GRADE_OPTIONS, SUBJECT_OPTIONS } from "@/lib/constants";
+import { toUserFacingError } from "@/lib/errors";
 import { CreateResourceInput } from "@/types";
 
 interface UploadModalProps {
@@ -26,6 +27,7 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
   const [description, setDescription] = useState("");
   const [subject, setSubject] = useState("");
   const [grade, setGrade] = useState("");
+  const [resourceScope, setResourceScope] = useState<"common" | "school">("school");
   const [externalUrl, setExternalUrl] = useState("");
 
   const fileLabel = useMemo(() => {
@@ -74,6 +76,7 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
       description: String(formData.get("description") ?? ""),
       subject: String(formData.get("subject") ?? ""),
       grade: String(formData.get("grade") ?? ""),
+      resourceScope: String(formData.get("resourceScope") ?? "school") as "common" | "school",
       externalUrl: String(formData.get("externalUrl") ?? ""),
       file,
     };
@@ -87,14 +90,11 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
       setDescription("");
       setSubject("");
       setGrade("");
+      setResourceScope("school");
       setExternalUrl("");
       window.setTimeout(() => onClose(), 600);
     } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "We could not save this resource. Please try again.",
-      );
+      setError(toUserFacingError(submitError, "We could not save this resource. Please try again."));
     } finally {
       setIsSubmitting(false);
     }
@@ -119,7 +119,7 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
       onClick={onClose}
     >
       <div
-        className="animate-scale-in w-full max-w-2xl rounded-[28px] border border-border bg-background p-6 shadow-sm"
+        className="animate-scale-in max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-border bg-background p-6 shadow-sm"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-6 flex items-start justify-between gap-4">
@@ -156,6 +156,22 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
             <Select name="grade" options={GRADE_OPTIONS} placeholder="Select grade" required value={grade} onChange={(event) => setGrade(event.target.value)} />
           </div>
 
+          <div className="space-y-2">
+            <p className="text-sm font-normal text-muted-foreground">Who can see this resource?</p>
+            <Select
+              name="resourceScope"
+              options={["school", "common"]}
+              placeholder="Choose visibility"
+              value={resourceScope}
+              onChange={(event) => setResourceScope(event.target.value as "common" | "school")}
+            />
+            <p className="text-sm text-muted-foreground">
+              {resourceScope === "common"
+                ? "This resource will appear in the common library for everyone."
+                : "This resource will only appear for teachers in your school."}
+            </p>
+          </div>
+
           <div className="rounded-2xl border border-border bg-muted/60 p-4">
             <p className="text-sm font-medium text-foreground">Discovery tip</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -180,7 +196,7 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
             <UploadCloud className="mb-3 h-6 w-6 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">{fileLabel}</p>
+            <p className="max-w-full break-words text-sm font-medium text-foreground">{fileLabel}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               Drag and drop here or browse from your computer. PDF, PPT, DOCX, CSV, images, and more.
             </p>

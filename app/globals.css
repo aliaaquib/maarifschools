@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --background: 255 255 255;
-  --foreground: 10 10 10;
-  --muted: 244 244 245;
-  --muted-foreground: 113 113 122;
+  --background: 249 250 251;
+  --foreground: 17 24 39;
+  --muted: 243 244 246;
+  --muted-foreground: 107 114 128;
   --border: 229 231 235;
   --card: 255 255 255;
   --ring: 17 17 17;
@@ -39,6 +39,7 @@ body {
   color: rgb(var(--foreground));
   font-feature-settings: "ss01" on, "cv01" on;
   text-rendering: optimizeLegibility;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 h1,

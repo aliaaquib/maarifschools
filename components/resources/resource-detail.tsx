@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { toUserFacingError } from "@/lib/errors";
 import { ResourceRecord } from "@/types";
 import { formatRelativeDate } from "@/lib/utils";
 
@@ -122,11 +123,7 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
 
       setLessonPlan(payload.lessonPlan);
     } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "We could not generate the lesson plan.",
-      );
+      setError(toUserFacingError(requestError, "We could not generate the lesson plan."));
     } finally {
       setLoadingLesson(false);
     }
@@ -134,7 +131,7 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
 
   if (!resource) {
     return (
-      <Card className="sticky top-24 hidden h-fit p-6 xl:block">
+      <Card className="sticky top-24 hidden h-fit min-w-0 p-6 xl:block">
         <p className="text-sm font-semibold text-foreground">Resource preview</p>
         <p className="mt-2 text-sm text-muted-foreground">
           Select a resource from the feed to see more context and quick actions.
@@ -144,7 +141,7 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
   }
 
   return (
-    <Card className="sticky top-24 hidden h-fit animate-fade-up p-6 xl:block">
+    <Card className="sticky top-24 hidden h-fit max-h-[calc(100vh-7rem)] min-w-0 overflow-y-auto animate-fade-up p-6 xl:block">
       <div className="space-y-4">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Preview</p>
@@ -153,9 +150,10 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
 
         {renderPreview()}
 
-        <p className="text-sm leading-6 text-muted-foreground">{resource.description}</p>
+        <p className="break-words text-sm leading-6 text-muted-foreground">{resource.description}</p>
 
         <div className="flex flex-wrap gap-2">
+          <Badge>{resource.resourceScope === "common" ? "Common resource" : "School resource"}</Badge>
           {resource.tags.map((tag) => (
             <Badge key={tag}>{tag}</Badge>
           ))}
@@ -167,7 +165,10 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
             Uploaded {formatRelativeDate(resource.createdAt)}
           </p>
           <p className="mt-3 text-xs text-muted-foreground">File type: {resource.fileType.toUpperCase()}</p>
-          <div className="mt-4 grid grid-cols-3 gap-3 text-sm text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
+            Visibility: {resource.resourceScope === "common" ? "Shared with everyone" : "Shared within one school"}
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-3">
             <span className="inline-flex items-center gap-1.5">
               <Eye className="h-4 w-4" />
               {views}
@@ -187,13 +188,13 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
         <div className="grid gap-2">
           {resource.fileUrl ? (
             <>
-              <Button variant="outline" className="w-full justify-start" onClick={handleDownload}>
+              <Button variant="outline" className="w-full justify-start text-left" onClick={handleDownload}>
                 <Download className="h-4 w-4" />
                 Download file
               </Button>
               <Button
                 variant="ghost"
-                className="w-full justify-start"
+                className="w-full justify-start text-left"
                 onClick={() => {
                   onOpen?.(resource);
                   window.open(resource.fileUrl, "_blank", "noopener,noreferrer");
@@ -205,7 +206,7 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
             </>
           ) : null}
           {onDelete && isOwner ? (
-            <Button variant="ghost" className="w-full justify-start" onClick={() => onDelete(resource)}>
+            <Button variant="ghost" className="w-full justify-start text-left" onClick={() => onDelete(resource)}>
               <Trash2 className="h-4 w-4" />
               Delete resource
             </Button>

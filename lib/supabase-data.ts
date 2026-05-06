@@ -107,6 +107,7 @@ function normalizeResource(raw: Row): ResourceRecord {
     tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === "string") : [],
     userId: String(raw.user_id ?? ""),
     userName: String(user?.name ?? "Teacher"),
+    resourceScope: raw.resource_scope === "common" ? "common" : "school",
     schoolId: raw.school_id ? String(raw.school_id) : null,
     createdAt: toIsoDate(raw.created_at),
     fileName: raw.file_name ? String(raw.file_name) : undefined,
@@ -381,17 +382,24 @@ export function getComments(onData: (comments: DiscussionComment[]) => void, onE
   return createRealtimeChannel("comments-feed", "comments", refresh);
 }
 
-export function getResourcesBySchool(
-  schoolId: string,
+export function getVisibleResources(
+  schoolId: string | null | undefined,
   onData: (resources: ResourceRecord[]) => void,
   onError: (error: Error) => void,
 ) {
   const refresh = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from("resources")
-      .select("id, title, description, user_id, school_id, file_type, tags, file_name, likes, bookmarks, created_at, users(name, avatar), resource_versions(file_url, storage_path, created_at)")
-      .eq("school_id", schoolId)
+      .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, created_at, users(name, avatar), resource_versions(file_url, storage_path, created_at)")
       .order("created_at", { ascending: false });
+
+    if (schoolId) {
+      query = query.or(`resource_scope.eq.common,and(resource_scope.eq.school,school_id.eq.${schoolId})`);
+    } else {
+      query = query.eq("resource_scope", "common");
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       onError(new Error(error.message));
@@ -405,7 +413,7 @@ export function getResourcesBySchool(
   return createRealtimeChannel("resources-feed", "resources", refresh);
 }
 
-export async function createResource(input: CreateResourceInput & { userId: string; userName: string; schoolId: string }) {
+export async function createResource(input: CreateResourceInput & { userId: string; userName: string; schoolId?: string | null }) {
   let fileUrl = input.externalUrl ?? "";
   let storagePath = "";
 
@@ -432,7 +440,8 @@ export async function createResource(input: CreateResourceInput & { userId: stri
         title: input.title,
         description: input.description,
         user_id: input.userId,
-        school_id: input.schoolId,
+        school_id: input.resourceScope === "school" ? input.schoolId ?? null : null,
+        resource_scope: input.resourceScope,
         file_type: detectFileType(input),
         tags,
         file_name: input.file?.name ?? null,
@@ -460,7 +469,7 @@ export async function createResource(input: CreateResourceInput & { userId: stri
   }
 }
 
-export async function uploadResource(input: CreateResourceInput & { userId: string; userName: string; schoolId: string }) {
+export async function uploadResource(input: CreateResourceInput & { userId: string; userName: string; schoolId?: string | null }) {
   return createResource(input);
 }
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { BookOpenText, ChevronRight, PanelLeftClose, PanelLeftOpen, School2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, initials } from "@/lib/utils";
 import { NAV_ITEMS, NavigationItemId } from "@/lib/constants";
 
 interface SidebarProps {
@@ -18,44 +18,31 @@ interface SidebarProps {
 
 function SidebarNav({
   activeItem,
-  isCollapsed,
   onNavigate,
-}: Pick<SidebarProps, "activeItem" | "isCollapsed" | "onNavigate">) {
+}: Pick<SidebarProps, "activeItem" | "onNavigate">) {
   return (
-    <nav className="flex flex-1 flex-col gap-1 px-3">
+    <nav className="mt-8 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-4 pb-3">
       {NAV_ITEMS.map((item) => {
         const Icon = item.icon;
         const isActive = activeItem === item.id;
+        const showNewBadge = item.id === "school-chat";
 
         return (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            title={isCollapsed ? item.label : undefined}
             className={cn(
-              "group relative flex h-11 items-center rounded-xl border border-transparent px-3 text-sm font-normal text-muted-foreground transition-all duration-150 ease-out hover:bg-muted hover:text-foreground",
-              isActive && "bg-muted text-foreground",
-              isCollapsed && "justify-center px-0",
+              "flex h-10 items-center justify-between rounded-2xl px-3.5 text-sm text-[#4B5563] transition-all duration-150 hover:-translate-y-[1px] hover:bg-[#F9FAFB] hover:text-[#111827]",
+              isActive && "bg-[#F5F3FF] font-semibold text-[#6D28D9]",
             )}
           >
-            <span
-              className={cn(
-                "absolute left-0 top-2 h-7 w-px rounded-full bg-foreground opacity-0 transition-opacity duration-150",
-                isActive && "opacity-100",
-              )}
-            />
-            <Icon className="h-4 w-4 shrink-0" />
-            <span
-              className={cn(
-                "ml-3 whitespace-nowrap transition-all duration-200",
-                isCollapsed && "ml-0 w-0 overflow-hidden opacity-0",
-              )}
-            >
-              {item.label}
+            <span className="flex items-center gap-3">
+              <Icon className="h-4 w-4" />
+              <span>{item.label}</span>
             </span>
-            {isCollapsed ? (
-              <span className="pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100">
-                {item.label}
+            {showNewBadge ? (
+              <span className="rounded-full bg-[#EDE9FE] px-2 py-0.5 text-xs font-semibold text-[#6D28D9]">
+                New
               </span>
             ) : null}
           </button>
@@ -67,67 +54,59 @@ function SidebarNav({
 
 function SidebarInner({
   activeItem,
-  isCollapsed,
   onNavigate,
-  onToggleCollapse,
   schoolName,
   mobile,
 }: {
   activeItem: NavigationItemId;
-  isCollapsed: boolean;
   onNavigate: (id: NavigationItemId) => void;
-  onToggleCollapse: () => void;
   schoolName?: string | null;
   mobile?: boolean;
 }) {
   return (
     <div
       className={cn(
-        "flex h-full flex-col border-r border-border bg-background py-4",
-        isCollapsed ? "w-[88px]" : "w-[272px]",
-        mobile && "w-[272px] shadow-sm",
+        "flex h-full min-h-0 w-[240px] flex-col border-r border-[#E5E7EB] bg-white px-0 py-4",
+        mobile && "shadow-sm",
       )}
     >
-      <div
-        className={cn(
-          "mb-6 flex items-center justify-between px-4",
-          isCollapsed && !mobile && "justify-center",
-        )}
-      >
-        <div className="flex items-center gap-3 overflow-hidden">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-muted text-sm font-semibold">
-            MS
+      <div className="px-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#6D28D9] text-white shadow-sm">
+            <BookOpenText className="h-6 w-6" />
           </div>
-          <div className={cn("transition-all", isCollapsed && !mobile && "hidden")}>
-            <p className="text-sm font-semibold text-foreground">Maarif Schools</p>
-            <p className="text-sm font-normal text-muted-foreground">Teacher workspace</p>
-            {schoolName ? <p className="text-sm font-normal text-muted-foreground">{schoolName}</p> : null}
+          <div>
+            <p className="text-[15px] font-semibold text-[#111827]">TeachShare</p>
+            <p className="text-sm text-[#6B7280]">Teacher Collaboration</p>
           </div>
         </div>
-
-        {!mobile ? (
-          <Button variant="ghost" size="icon" onClick={onToggleCollapse}>
-            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </Button>
-        ) : null}
       </div>
 
-      <SidebarNav
-        activeItem={activeItem}
-        isCollapsed={isCollapsed && !mobile}
-        onNavigate={onNavigate}
-      />
+      <SidebarNav activeItem={activeItem} onNavigate={onNavigate} />
 
-      {!isCollapsed || mobile ? (
-        <div className="mt-auto px-4 pt-6">
-          <div className="rounded-2xl border border-border bg-card p-4">
-            <p className="text-sm font-semibold text-foreground">Focused workspace</p>
-            <p className="mt-1 text-sm font-normal text-muted-foreground">
-              Resources, discussion, and profiles in one calm workflow.
+      <div className="shrink-0 px-5 pt-3">
+        <div className="rounded-2xl border border-[#E5E7EB] bg-white p-3.5 shadow-[0_10px_25px_rgba(17,24,39,0.04)]">
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F5F3FF] text-[#6D28D9]">
+              <School2 className="h-4.5 w-4.5" />
+            </div>
+            <p className="whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.14em] text-[#9CA3AF]">
+              Current School
             </p>
           </div>
+          <p className="mt-3 break-words text-[14px] font-semibold leading-5 text-[#111827]">
+            {schoolName || "Maarif International School"}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-3 h-9 w-full justify-between border-[#E5E7EB] bg-white px-3 text-sm text-[#374151] hover:bg-[#F9FAFB]"
+            type="button"
+          >
+            Switch School
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -139,9 +118,7 @@ export function Sidebar(props: SidebarProps) {
         <SidebarInner
           activeItem={props.activeItem}
           schoolName={props.schoolName}
-          isCollapsed={props.isCollapsed}
           onNavigate={props.onNavigate}
-          onToggleCollapse={props.onToggleCollapse}
         />
       </aside>
 
@@ -162,12 +139,10 @@ export function Sidebar(props: SidebarProps) {
         <SidebarInner
           activeItem={props.activeItem}
           schoolName={props.schoolName}
-          isCollapsed={false}
           onNavigate={(id) => {
             props.onNavigate(id);
             props.onCloseMobile();
           }}
-          onToggleCollapse={() => undefined}
           mobile
         />
       </aside>
@@ -186,7 +161,7 @@ export function SidebarMobileTrigger({
     <Button
       variant="outline"
       size="icon"
-      className="lg:hidden"
+      className="border-[#E5E7EB] bg-white text-[#374151] hover:bg-[#F9FAFB] lg:hidden"
       onClick={onToggle}
       aria-label="Toggle sidebar"
     >

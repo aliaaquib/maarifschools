@@ -1,4 +1,5 @@
 export type ResourceType = "pdf" | "ppt" | "docx" | "image" | "link" | "other";
+export type ResourceScope = "common" | "school";
 
 export interface UserProfile {
   uid: string;
@@ -37,6 +38,7 @@ export interface ResourceRecord {
   tags: string[];
   userId: string;
   userName: string;
+  resourceScope: ResourceScope;
   schoolId?: string | null;
   createdAt: string;
   fileName?: string;
@@ -54,6 +56,7 @@ export interface CreateResourceInput {
   description: string;
   subject: string;
   grade: string;
+  resourceScope: ResourceScope;
   externalUrl?: string;
   file?: File | null;
 }

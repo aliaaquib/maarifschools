@@ -5,6 +5,7 @@ import { createContext, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 
 import { createUserProfile, ensureUserProfile, getUserProfile, updateUser } from "@/lib/supabase-data";
+import { toUserFacingError } from "@/lib/errors";
 import {
   GUEST_USER_ID,
   getSupabaseConnectionErrorMessage,
@@ -76,7 +77,7 @@ function getReadableAuthError(error: unknown, action: "create your account" | "s
     return getSupabaseConnectionErrorMessage(action);
   }
 
-  return error instanceof Error ? error.message : "Something went wrong. Please try again.";
+  return toUserFacingError(error, "Something went wrong. Please try again.");
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -232,7 +233,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       async signUp({ name, email, password, schoolId }) {
         if (!isSupabaseConfigured) {
-          throw new Error(`Missing Supabase env vars: ${missingSupabaseEnvVars.join(", ")}`);
+          console.error("Missing Supabase env vars", missingSupabaseEnvVars);
+          throw new Error("This service is not ready yet. Please try again in a moment.");
         }
 
         try {
@@ -279,7 +281,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async signIn({ email, password }) {
         if (!isSupabaseConfigured) {
-          throw new Error(`Missing Supabase env vars: ${missingSupabaseEnvVars.join(", ")}`);
+          console.error("Missing Supabase env vars", missingSupabaseEnvVars);
+          throw new Error("This service is not ready yet. Please try again in a moment.");
         }
 
         try {

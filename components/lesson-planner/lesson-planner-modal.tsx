@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { toUserFacingError } from "@/lib/errors";
 
 interface LessonPlannerModalProps {
   open: boolean;
@@ -55,11 +56,7 @@ export function LessonPlannerModal({ open, onClose }: LessonPlannerModalProps) {
 
       setLessonPlan(payload.lessonPlan);
     } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "We could not generate the lesson plan.",
-      );
+      setError(toUserFacingError(requestError, "We could not generate the lesson plan."));
     } finally {
       setLoading(false);
     }

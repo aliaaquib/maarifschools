@@ -1,14 +1,16 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, Plus, UserRound } from "lucide-react";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { CommunityPanel } from "@/components/community/community-panel";
+import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
+import { InviteTeachersModal } from "@/components/invite/invite-teachers-modal";
 import { LessonPlannerModal } from "@/components/lesson-planner/lesson-planner-modal";
 import { Sidebar } from "@/components/layout/sidebar";
 import { SchoolChatPanel } from "@/components/school-chat/school-chat-panel";
+import { UploadModal } from "@/components/resources/upload-modal";
 import { Topbar } from "@/components/layout/topbar";
 import { ResourcesPanel } from "@/components/resources/resources-panel";
 import { SearchBar } from "@/components/resources/search-bar";
@@ -20,6 +22,7 @@ import { Toast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { GRADE_OPTIONS, NAV_ITEMS, NavigationItemId, SUBJECT_OPTIONS } from "@/lib/constants";
+import { toUserFacingError } from "@/lib/errors";
 import {
   createComment,
   createPost,
@@ -29,7 +32,7 @@ import {
   deleteResource,
   ensureUserProfile,
   getComments,
-  getResourcesBySchool,
+  getVisibleResources,
   getUserProfile,
   getSchoolMessages,
   getPosts,
@@ -53,20 +56,15 @@ import {
   SchoolMessage,
 } from "@/types";
 
-const UploadModal = dynamic(
-  () => import("@/components/resources/upload-modal").then((mod) => mod.UploadModal),
-  { ssr: false },
-);
-
 const defaultFilters: ResourceFilters = {
   search: "",
   subject: "",
   grade: "",
 };
 
-export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: NavigationItemId }) {
+export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveItem?: NavigationItemId }) {
   const { user, profile, logOut, saveProfile } = useAuth();
-  const { isCollapsed, isMobileOpen, setIsCollapsed, setIsMobileOpen } = useSidebar();
+  const { isMobileOpen, setIsMobileOpen } = useSidebar();
   const [activeItem, setActiveItem] = useState<NavigationItemId>(initialActiveItem);
   const [filters, setFilters] = useState<ResourceFilters>(defaultFilters);
   const [resources, setResources] = useState<ResourceRecord[]>([]);
@@ -80,6 +78,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
   const [workspaceSuccess, setWorkspaceSuccess] = useState<string | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isInviteTeachersOpen, setIsInviteTeachersOpen] = useState(false);
   const [isLessonPlannerOpen, setIsLessonPlannerOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -154,33 +153,35 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       (error) => {
         setPosts([]);
         setLoadingCommunity(false);
-        setWorkspaceError(error.message);
+        setWorkspaceError(toUserFacingError(error, "We couldn't load community updates right now."));
       },
     );
 
     const unsubscribeComments = getComments(
       (nextComments) => setComments(nextComments),
-      (error) => setWorkspaceError(error.message),
+      (error) => setWorkspaceError(toUserFacingError(error, "We couldn't load replies right now.")),
     );
     let unsubscribeSchoolMessages: () => void = () => undefined;
 
     let unsubscribeResources: () => void = () => undefined;
 
+    setLoadingResources(true);
+
+    unsubscribeResources = getVisibleResources(
+      activeProfile.schoolId,
+      (nextResources) => {
+        setResources(nextResources);
+        setLoadingResources(false);
+      },
+      (error) => {
+        setResources([]);
+        setLoadingResources(false);
+        setWorkspaceError(toUserFacingError(error, "We couldn't load resources right now."));
+      },
+    );
+
     if (activeProfile.schoolId) {
-      setLoadingResources(true);
       setLoadingSchoolChat(true);
-      unsubscribeResources = getResourcesBySchool(
-        activeProfile.schoolId,
-        (nextResources) => {
-          setResources(nextResources);
-          setLoadingResources(false);
-        },
-        (error) => {
-          setResources([]);
-          setLoadingResources(false);
-          setWorkspaceError(error.message);
-        },
-      );
       unsubscribeSchoolMessages = getSchoolMessages(
         activeProfile.schoolId,
         (nextMessages) => {
@@ -190,12 +191,10 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
         (error) => {
           setSchoolMessages([]);
           setLoadingSchoolChat(false);
-          setWorkspaceError(error.message);
+          setWorkspaceError(toUserFacingError(error, "We couldn't load school chat right now."));
         },
       );
     } else {
-      setResources([]);
-      setLoadingResources(false);
       setSchoolMessages([]);
       setLoadingSchoolChat(false);
     }
@@ -355,7 +354,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
     setWorkspaceSuccess(null);
 
     try {
-      if (!activeProfile.schoolId) {
+      if (input.resourceScope === "school" && !activeProfile.schoolId) {
         throw new Error("Your account is not linked to a school yet.");
       }
 
@@ -365,11 +364,11 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
         ...input,
         userId: currentUserId,
         userName: activeProfile.name,
-        schoolId: activeProfile.schoolId,
+        schoolId: input.resourceScope === "school" ? activeProfile.schoolId : null,
       });
       setWorkspaceSuccess("Resource uploaded successfully.");
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : "We could not upload your resource.");
+      throw new Error(toUserFacingError(error, "We could not upload your resource."));
     }
   }
 
@@ -388,7 +387,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       await toggleResourceReaction(resource, currentUserId, "likes");
     } catch (error) {
       setResources(previousResources);
-      setWorkspaceError(error instanceof Error ? error.message : "Could not update likes.");
+      setWorkspaceError(toUserFacingError(error, "Could not update likes."));
     }
   }
 
@@ -407,7 +406,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       await toggleResourceReaction(resource, currentUserId, "bookmarks");
     } catch (error) {
       setResources(previousResources);
-      setWorkspaceError(error instanceof Error ? error.message : "Could not update bookmarks.");
+      setWorkspaceError(toUserFacingError(error, "Could not update bookmarks."));
     }
   }
 
@@ -426,7 +425,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
     } catch (error) {
       setResources(previousResources);
       setSelectedResourceId(previousSelectedResourceId);
-      setWorkspaceError(error instanceof Error ? error.message : "Could not delete resource.");
+      setWorkspaceError(toUserFacingError(error, "Could not delete resource."));
     }
   }
 
@@ -514,7 +513,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       await togglePostReaction(post, currentUserId, "likes");
     } catch (error) {
       setPosts(previousPosts);
-      setWorkspaceError(error instanceof Error ? error.message : "Could not update post like.");
+      setWorkspaceError(toUserFacingError(error, "Could not update post like."));
     }
   }
 
@@ -533,7 +532,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       await togglePostReaction(post, currentUserId, "bookmarks");
     } catch (error) {
       setPosts(previousPosts);
-      setWorkspaceError(error instanceof Error ? error.message : "Could not update post bookmark.");
+      setWorkspaceError(toUserFacingError(error, "Could not update post bookmark."));
     }
   }
 
@@ -552,7 +551,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
     } catch (error) {
       setPosts(previousPosts);
       setComments(previousComments);
-      setWorkspaceError(error instanceof Error ? error.message : "Could not delete post.");
+      setWorkspaceError(toUserFacingError(error, "Could not delete post."));
     }
   }
 
@@ -568,7 +567,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       setWorkspaceSuccess("Comment deleted.");
     } catch (error) {
       setComments(previousComments);
-      setWorkspaceError(error instanceof Error ? error.message : "Could not delete comment.");
+      setWorkspaceError(toUserFacingError(error, "Could not delete comment."));
     }
   }
 
@@ -586,7 +585,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
       setProfileForm((current) => ({ ...current, avatar: avatarUrl }));
       setProfileMessage("Profile photo uploaded. Save profile to keep it.");
     } catch (error) {
-      setProfileError(error instanceof Error ? error.message : "Could not upload profile photo.");
+      setProfileError(toUserFacingError(error, "Could not upload profile photo."));
     } finally {
       setUploadingAvatar(false);
     }
@@ -615,7 +614,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
 
       setProfileMessage("Profile updated successfully.");
     } catch (error) {
-      setProfileError(error instanceof Error ? error.message : "We could not update your profile.");
+      setProfileError(toUserFacingError(error, "We could not update your profile."));
     } finally {
       setSavingProfile(false);
     }
@@ -623,105 +622,39 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
 
   function renderWorkspace() {
     switch (activeItem) {
-      case NAV_ITEMS[0].id:
+      case "dashboard":
         return (
-          <div className="space-y-8">
-            <div className="grid gap-4 md:grid-cols-[1.4fr_1fr_1fr]">
-              <Card className="p-6">
-                <p className="text-sm text-muted-foreground">Welcome back</p>
-                <h2 className="mt-3 text-3xl font-semibold text-foreground">Keep your teaching resources moving</h2>
-                <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-                  Track activity, revisit recommended materials, and keep your next contribution close at hand.
-                </p>
-                {activeProfile.schoolName ? (
-                  <p className="mt-4 text-sm text-muted-foreground">Showing resources from {activeProfile.schoolName}</p>
-                ) : null}
-              </Card>
-              <Card className="p-6">
-                <p className="text-sm text-muted-foreground">Your stats</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{myResources.length}</p>
-                <p className="mt-2 text-sm text-muted-foreground">resources uploaded</p>
-              </Card>
-              <Card className="p-6">
-                <p className="text-sm text-muted-foreground">Community</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{posts.length}</p>
-                <p className="mt-2 text-sm text-muted-foreground">recent discussions</p>
-              </Card>
-            </div>
-
-            <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-              <Card className="p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">Recent activity</p>
-                    <p className="mt-1 text-sm text-muted-foreground">See what educators are doing across the workspace.</p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setActiveItem("community")}>
-                    Open community
-                    <ArrowUpRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="mt-6 space-y-3">
-                  {activityFeed.map((item) => (
-                    <div key={item.id} className="rounded-2xl border border-border bg-muted/40 px-4 py-3">
-                      <p className="text-sm font-medium text-foreground">{item.text}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{new Date(item.time).toLocaleDateString()}</p>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              <div className="space-y-6">
-                <Card className="p-6">
-                  <p className="text-sm font-semibold text-foreground">Recommended resources</p>
-                  <div className="mt-5 space-y-3">
-                    {trendingResources.slice(0, 3).map((resource) => (
-                      <button
-                        key={resource.id}
-                        className="flex w-full items-start justify-between rounded-2xl border border-border bg-muted/30 px-4 py-3 text-left transition hover:-translate-y-[1px] hover:bg-muted/60"
-                        onClick={() => {
-                          handleSelectResource(resource);
-                          setActiveItem("all");
-                        }}
-                      >
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{resource.title}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">{resource.userName}</p>
-                        </div>
-                        <span className="text-sm text-muted-foreground">{resource.bookmarks.length} saves</span>
-                      </button>
-                    ))}
-                  </div>
-                </Card>
-
-                <Card className="p-6">
-                  <p className="text-sm font-semibold text-foreground">Your stats</p>
-                  <div className="mt-5 grid gap-3">
-                    {myResourceStats.map((stat) => (
-                      <div key={stat.label} className="rounded-2xl border border-border bg-muted/30 px-4 py-3">
-                        <p className="text-sm text-muted-foreground">{stat.label}</p>
-                        <p className="mt-2 text-2xl font-semibold text-foreground">{stat.value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              </div>
-            </div>
-          </div>
+          <DashboardOverview
+            profile={activeProfile}
+            resources={filteredResources}
+            myResources={myResources}
+            posts={posts}
+            comments={comments}
+            schoolMessages={schoolMessages}
+            onOpenUpload={() => setIsUploadOpen(true)}
+            onInviteTeachers={() => setIsInviteTeachersOpen(true)}
+            onStartDiscussion={() => setActiveItem("community")}
+            onExploreResources={() => setActiveItem("all")}
+            onOpenSchoolChat={() => setActiveItem("school-chat")}
+            onSelectResource={(resource) => {
+              handleSelectResource(resource);
+              setActiveItem("all");
+            }}
+          />
         );
-      case NAV_ITEMS[1].id:
+      case "all":
         return (
           <>
             <SearchBar filters={filters} schoolName={activeProfile.schoolName} onFiltersChange={setFilters} />
             <ResourcesPanel
               title="All Resources"
-              description="A shared library for lesson plans, worksheets, slide decks, and reference materials."
+              description="Browse common resources for everyone alongside materials shared within your school."
               resources={filteredResources}
               loading={loadingResources}
               hasActiveFilters={Boolean(filters.search || filters.subject || filters.grade)}
               currentUserId={currentUserId}
               selectedResource={selectedResource}
-              emptyDescription="No resources in your school yet. Be the first to upload."
+              emptyDescription="No resources are available yet. Be the first to upload to your school or the shared library."
               onSelectResource={handleSelectResource}
               onLike={handleToggleLike}
               onBookmark={handleToggleBookmark}
@@ -731,37 +664,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
             />
           </>
         );
-      case NAV_ITEMS[2].id:
-        return (
-          <ResourcesPanel
-            title="Trending"
-            description="The resources teachers are saving, revisiting, and using most this week."
-            resources={trendingResources}
-            loading={loadingResources}
-            currentUserId={currentUserId}
-            selectedResource={selectedResource}
-            showResourceGrid={false}
-            emptyDescription="No resources in your school yet. Be the first to upload."
-            featuredSections={[
-              {
-                title: "Trending this week",
-                description: "High-interest materials gaining attention across the workspace.",
-                resources: trendingResources.slice(0, 5),
-              },
-              {
-                title: "Recently added",
-                description: "Fresh uploads that teachers can discover right away.",
-                resources: recentResources.slice(0, 5),
-              },
-            ]}
-            onSelectResource={handleSelectResource}
-            onLike={handleToggleLike}
-            onBookmark={handleToggleBookmark}
-            onDownload={handleDownloadResource}
-            onDelete={handleDeleteResource}
-          />
-        );
-      case NAV_ITEMS[3].id:
+      case "mine":
         return (
           <ResourcesPanel
             title="My Resources"
@@ -781,38 +684,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
             onOpenUpload={() => setIsUploadOpen(true)}
           />
         );
-      case NAV_ITEMS[4].id:
-        return (
-          <Card className="max-w-3xl p-8">
-            <p className="text-sm text-muted-foreground">Upload</p>
-            <h2 className="mt-3 text-3xl font-semibold text-foreground">Share something useful with other teachers</h2>
-            <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-              Add lesson plans, worksheets, presentations, or links. Clear titles and descriptions help other teachers discover your work faster.
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">This resource is shared within your school.</p>
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
-              <Card className="p-4">
-                <p className="text-sm text-muted-foreground">Supported formats</p>
-                <p className="mt-3 text-lg font-semibold text-foreground">PDF, PPT, DOCX</p>
-              </Card>
-              <Card className="p-4">
-                <p className="text-sm text-muted-foreground">Best results</p>
-                <p className="mt-3 text-lg font-semibold text-foreground">Use clear titles and tags</p>
-              </Card>
-              <Card className="p-4">
-                <p className="text-sm text-muted-foreground">Helpful tip</p>
-                <p className="mt-3 text-lg font-semibold text-foreground">Share what another teacher can reuse today</p>
-              </Card>
-            </div>
-            <div className="mt-8">
-              <Button onClick={() => setIsUploadOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Upload Resource
-              </Button>
-            </div>
-          </Card>
-        );
-      case NAV_ITEMS[5].id:
+      case "school-chat":
         if (!profile?.schoolId) {
           return (
             <Card className="max-w-3xl p-8">
@@ -834,7 +706,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
             onSendMessage={handleCreateSchoolMessage}
           />
         );
-      case NAV_ITEMS[6].id:
+      case "community":
         return (
           <CommunityPanel
             posts={posts}
@@ -849,7 +721,7 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
             onDeleteComment={handleDeleteComment}
           />
         );
-      case NAV_ITEMS[7].id:
+      case "bookmarks":
         return (
           <div className="space-y-12">
             <div className="space-y-2">
@@ -890,162 +762,184 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
             />
           </div>
         );
-      case NAV_ITEMS[8].id:
+      case "settings":
         return (
           <div className="max-w-5xl space-y-8">
             <Card className="p-8">
-            <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-              <div className="space-y-3">
-                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
-                  {profileForm.avatar ? (
-                    <img src={profileForm.avatar} alt={activeProfile.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <UserRound className="h-8 w-8 text-muted-foreground" />
-                  )}
-                </div>
-                <div>
-                  <h2 className="text-3xl font-semibold text-foreground">{activeProfile.name}</h2>
-                  <p className="mt-1 text-sm font-normal text-muted-foreground">{activeProfile.email}</p>
-                  <div className="mt-3 inline-flex rounded-full border border-border bg-muted px-3 py-1 text-sm text-foreground">
-                    {contributorLevel}
-                  </div>
-                </div>
-              </div>
-
-              {user && isAuthRequired ? (
-                <Button variant="outline" onClick={() => void logOut()}>
-                  Sign out
-                </Button>
-              ) : null}
-            </div>
-
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
-              <Card className="p-4">
-                <p className="text-sm font-normal text-muted-foreground">Uploads</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{myResources.length}</p>
-              </Card>
-              <Card className="p-4">
-                <p className="text-sm font-normal text-muted-foreground">Bookmarks</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{bookmarkedResources.length}</p>
-              </Card>
-              <Card className="p-4">
-                <p className="text-sm font-normal text-muted-foreground">Posts</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">
-                  {posts.filter((post) => post.userId === currentUserId).length}
-                </p>
-              </Card>
-            </div>
-
-            <div className="mt-8 grid gap-4 md:grid-cols-2">
-              <Card className="p-6">
-                <p className="text-sm font-semibold text-foreground">Identity</p>
-                <div className="mt-5 space-y-3 text-sm">
-                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Name</span><span>{activeProfile.name}</span></div>
-                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Email</span><span>{activeProfile.email}</span></div>
-                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Subject</span><span>{profileForm.subject || "Not set"}</span></div>
-                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Grade</span><span>{profileForm.grade || "Not set"}</span></div>
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <p className="text-sm font-semibold text-foreground">Activity</p>
-                <div className="mt-5 space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Recent uploads</p>
-                    <div className="mt-3 space-y-2">
-                      {recentUploads.length > 0 ? recentUploads.map((resource) => (
-                        <button key={resource.id} className="flex w-full items-center justify-between rounded-xl border border-border bg-muted/30 px-3 py-2 text-left" onClick={() => { handleSelectResource(resource); setActiveItem("mine"); }}>
-                          <span className="text-sm font-medium text-foreground">{resource.title}</span>
-                          <span className="text-sm text-muted-foreground">{resource.downloadCount ?? Math.max(0, resource.bookmarks.length)} downloads</span>
-                        </button>
-                      )) : <p className="text-sm text-muted-foreground">No uploads yet.</p>}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Recent posts</p>
-                    <div className="mt-3 space-y-2">
-                      {recentPosts.length > 0 ? recentPosts.map((post) => (
-                        <button key={post.id} className="w-full rounded-xl border border-border bg-muted/30 px-3 py-2 text-left" onClick={() => setActiveItem("community")}>
-                          <p className="line-clamp-2 text-sm font-medium text-foreground">{post.content}</p>
-                        </button>
-                      )) : <p className="text-sm text-muted-foreground">No posts yet.</p>}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </div>
-
-            <div className="mt-8 space-y-4 rounded-2xl border border-border bg-muted p-6">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Profile settings</p>
-                <p className="mt-1 text-sm font-normal text-muted-foreground">
-                  Keep your subject and grade up to date so colleagues know what you teach.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
-                  <p className="text-sm font-normal text-muted-foreground">Profile photo</p>
-                  <div className="flex items-center gap-3">
-                    <label className="inline-flex cursor-pointer">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(event) => void handleAvatarChange(event.target.files?.[0] ?? null)}
-                      />
-                      <span className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-card px-4 text-sm text-foreground transition hover:bg-muted">
-                        {uploadingAvatar ? "Uploading..." : "Upload photo"}
-                      </span>
-                    </label>
+              <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-3">
+                  <p className="text-sm text-[#6B7280]">Settings</p>
+                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
                     {profileForm.avatar ? (
-                      <button
-                        type="button"
-                        className="text-sm text-muted-foreground underline underline-offset-4"
-                        onClick={() => setProfileForm((current) => ({ ...current, avatar: "" }))}
-                      >
-                        Remove
-                      </button>
-                    ) : null}
+                      <img src={profileForm.avatar} alt={activeProfile.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <UserRound className="h-8 w-8 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-semibold text-foreground">{activeProfile.name}</h2>
+                    <p className="mt-1 text-sm font-normal text-muted-foreground">{activeProfile.email}</p>
+                    <div className="mt-3 inline-flex rounded-full border border-border bg-muted px-3 py-1 text-sm text-foreground">
+                      {contributorLevel}
+                    </div>
                   </div>
                 </div>
-                <Input
-                  value={profileForm.name}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({ ...current, name: event.target.value }))
-                  }
-                  placeholder="Full name"
-                />
-                <Select
-                  value={profileForm.subject}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({ ...current, subject: event.target.value }))
-                  }
-                  options={SUBJECT_OPTIONS}
-                  placeholder="Select subject"
-                />
-                <Select
-                  value={profileForm.grade}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({ ...current, grade: event.target.value }))
-                  }
-                  options={GRADE_OPTIONS}
-                  placeholder="Select grade"
-                />
+
+                {user && isAuthRequired ? (
+                  <Button variant="outline" onClick={() => void logOut()}>
+                    Sign out
+                  </Button>
+                ) : null}
               </div>
 
-              {profileMessage ? <p className="text-sm font-normal text-muted-foreground">{profileMessage}</p> : null}
-              {profileError ? <p className="text-sm font-normal text-foreground/80">{profileError}</p> : null}
+              <div className="mt-8 grid gap-4 md:grid-cols-3">
+                <Card className="p-4">
+                  <p className="text-sm font-normal text-muted-foreground">Uploads</p>
+                  <p className="mt-3 text-3xl font-semibold text-foreground">{myResources.length}</p>
+                </Card>
+                <Card className="p-4">
+                  <p className="text-sm font-normal text-muted-foreground">Bookmarks</p>
+                  <p className="mt-3 text-3xl font-semibold text-foreground">{bookmarkedResources.length}</p>
+                </Card>
+                <Card className="p-4">
+                  <p className="text-sm font-normal text-muted-foreground">Posts</p>
+                  <p className="mt-3 text-3xl font-semibold text-foreground">
+                    {posts.filter((post) => post.userId === currentUserId).length}
+                  </p>
+                </Card>
+              </div>
 
-              <Button
-                disabled={savingProfile}
-                loading={savingProfile}
-                loadingText="Saving..."
-                onClick={() => void handleProfileSave()}
-              >
-                Save profile
-              </Button>
-            </div>
+              <div className="mt-8 grid gap-4 md:grid-cols-2">
+                <Card className="p-6">
+                  <p className="text-sm font-semibold text-foreground">Identity</p>
+                  <div className="mt-5 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Name</span><span>{activeProfile.name}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Email</span><span>{activeProfile.email}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">School</span><span>{activeProfile.schoolName || "Not linked yet"}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Subject</span><span>{profileForm.subject || "Not set"}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Grade</span><span>{profileForm.grade || "Not set"}</span></div>
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <p className="text-sm font-semibold text-foreground">Workspace rules</p>
+                  <div className="mt-5 space-y-4 text-sm text-muted-foreground">
+                    <div>
+                      <p className="font-medium text-foreground">School visibility</p>
+                      <p className="mt-1">School resources are limited to teachers in the same school.</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground">Common library</p>
+                      <p className="mt-1">Common resources can be discovered across every connected school.</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground">Discussion space</p>
+                      <p className="mt-1">Community discussions stay global so teachers can learn from every school.</p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              <div className="mt-8 grid gap-4 md:grid-cols-2">
+                <Card className="p-6">
+                  <p className="text-sm font-semibold text-foreground">Activity</p>
+                  <div className="mt-5 space-y-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Recent uploads</p>
+                      <div className="mt-3 space-y-2">
+                        {recentUploads.length > 0 ? recentUploads.map((resource) => (
+                          <button key={resource.id} className="flex w-full items-center justify-between rounded-xl border border-border bg-muted/30 px-3 py-2 text-left" onClick={() => { handleSelectResource(resource); setActiveItem("mine"); }}>
+                            <span className="text-sm font-medium text-foreground">{resource.title}</span>
+                            <span className="text-sm text-muted-foreground">{resource.downloadCount ?? Math.max(0, resource.bookmarks.length)} downloads</span>
+                          </button>
+                        )) : <p className="text-sm text-muted-foreground">No uploads yet.</p>}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Recent posts</p>
+                      <div className="mt-3 space-y-2">
+                        {recentPosts.length > 0 ? recentPosts.map((post) => (
+                          <button key={post.id} className="w-full rounded-xl border border-border bg-muted/30 px-3 py-2 text-left" onClick={() => setActiveItem("community")}>
+                            <p className="line-clamp-2 text-sm font-medium text-foreground">{post.content}</p>
+                          </button>
+                        )) : <p className="text-sm text-muted-foreground">No posts yet.</p>}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <p className="text-sm font-semibold text-foreground">Profile settings</p>
+                  <p className="mt-1 text-sm font-normal text-muted-foreground">
+                    Keep your subject and grade up to date so colleagues know what you teach.
+                  </p>
+
+                  <div className="mt-5 grid gap-4">
+                    <div className="space-y-2">
+                      <p className="text-sm font-normal text-muted-foreground">Profile photo</p>
+                      <div className="flex items-center gap-3">
+                        <label className="inline-flex cursor-pointer">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(event) => void handleAvatarChange(event.target.files?.[0] ?? null)}
+                          />
+                          <span className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-card px-4 text-sm text-foreground transition hover:bg-muted">
+                            {uploadingAvatar ? "Uploading..." : "Upload photo"}
+                          </span>
+                        </label>
+                        {profileForm.avatar ? (
+                          <button
+                            type="button"
+                            className="text-sm text-muted-foreground underline underline-offset-4"
+                            onClick={() => setProfileForm((current) => ({ ...current, avatar: "" }))}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <Input
+                      value={profileForm.name}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({ ...current, name: event.target.value }))
+                      }
+                      placeholder="Full name"
+                    />
+                    <Select
+                      value={profileForm.subject}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({ ...current, subject: event.target.value }))
+                      }
+                      options={SUBJECT_OPTIONS}
+                      placeholder="Select subject"
+                    />
+                    <Select
+                      value={profileForm.grade}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({ ...current, grade: event.target.value }))
+                      }
+                      options={GRADE_OPTIONS}
+                      placeholder="Select grade"
+                    />
+                  </div>
+
+                  {profileMessage ? <p className="mt-4 text-sm font-normal text-muted-foreground">{profileMessage}</p> : null}
+                  {profileError ? <p className="mt-4 text-sm font-normal text-foreground/80">{profileError}</p> : null}
+
+                  <div className="mt-5">
+                    <Button
+                      disabled={savingProfile}
+                      loading={savingProfile}
+                      loadingText="Saving..."
+                      onClick={() => void handleProfileSave()}
+                    >
+                      Save settings
+                    </Button>
+                  </div>
+                </Card>
+              </div>
             </Card>
           </div>
         );
@@ -1084,14 +978,14 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
           </Card>
         </div>
       ) : (
-        <div className="flex min-h-screen bg-background text-foreground">
+        <div className="flex h-screen overflow-hidden bg-[#F9FAFB] text-foreground">
           <Sidebar
             activeItem={activeItem}
             schoolName={activeProfile.schoolName}
-            isCollapsed={isCollapsed}
+            isCollapsed={false}
             isMobileOpen={isMobileOpen}
             onNavigate={setActiveItem}
-            onToggleCollapse={() => setIsCollapsed((value) => !value)}
+            onToggleCollapse={() => undefined}
             onCloseMobile={() => setIsMobileOpen(false)}
           />
 
@@ -1101,12 +995,16 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
               onSearchChange={(value) => setFilters((current) => ({ ...current, search: value }))}
               onOpenLessonPlanner={() => setIsLessonPlannerOpen(true)}
               schoolName={activeProfile.schoolName}
+              userName={activeProfile.name}
+              userAvatar={activeProfile.avatar ?? null}
               isMobileSidebarOpen={isMobileOpen}
               onToggleMobileSidebar={() => setIsMobileOpen((value) => !value)}
             />
 
-            <main className="min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-8 px-4 py-6 md:px-8 md:py-8">
+            <main className={activeItem === "dashboard" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto"}>
+              <div className={activeItem === "dashboard"
+                ? "mx-auto flex h-full w-full max-w-[1440px] flex-col gap-4 px-4 pt-12 pb-3 md:px-6 md:pt-14 md:pb-4"
+                : "mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 pt-14 pb-6 md:px-6 md:pt-16 md:pb-8"}>
                 {renderWorkspace()}
               </div>
             </main>
@@ -1121,6 +1019,12 @@ export function AppShell({ initialActiveItem = "all" }: { initialActiveItem?: Na
             open={isUploadOpen}
             onClose={() => setIsUploadOpen(false)}
             onSubmit={handleUpload}
+          />
+          <InviteTeachersModal
+            open={isInviteTeachersOpen}
+            onClose={() => setIsInviteTeachersOpen(false)}
+            schoolId={activeProfile.schoolId}
+            schoolName={activeProfile.schoolName}
           />
           <LessonPlannerModal
             open={isLessonPlannerOpen}

@@ -50,7 +50,7 @@ export function ResourcesPanel({
 }: ResourcesPanelProps) {
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="space-y-8">
+      <div className="min-w-0 space-y-8">
         <div className="space-y-2">
           <h2 className="max-w-3xl text-3xl font-semibold text-foreground">{title}</h2>
           <p className="max-w-2xl text-sm font-normal text-muted-foreground">{description}</p>
@@ -70,7 +70,7 @@ export function ResourcesPanel({
         {featuredSections?.length ? (
           <div className="grid gap-4 xl:grid-cols-2">
             {featuredSections.map((section) => (
-              <div key={section.title} className="rounded-2xl border border-border bg-card p-6">
+              <div key={section.title} className="min-w-0 rounded-2xl border border-border bg-card p-6">
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-foreground">{section.title}</p>
                   <p className="text-sm text-muted-foreground">{section.description}</p>
@@ -82,11 +82,11 @@ export function ResourcesPanel({
                       className="flex w-full items-start justify-between rounded-xl border border-border bg-background px-4 py-3 text-left transition hover:-translate-y-[1px] hover:bg-muted/40"
                       onClick={() => onSelectResource(resource)}
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-foreground">{resource.title}</p>
                         <p className="mt-1 truncate text-sm text-muted-foreground">{resource.userName}</p>
                       </div>
-                      <span className="text-sm text-muted-foreground">{resource.bookmarks.length} saves</span>
+                      <span className="shrink-0 text-sm text-muted-foreground">{resource.bookmarks.length} saves</span>
                     </button>
                   )) : (
                     <p className="text-sm text-muted-foreground">Nothing here yet.</p>

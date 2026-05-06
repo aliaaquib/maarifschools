@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
+import { toUserFacingError } from "@/lib/errors";
 import { CommunityCategory, DiscussionComment, DiscussionPost } from "@/types";
 import { formatRelativeDate, initials } from "@/lib/utils";
 
@@ -110,9 +111,7 @@ export function CommunityPanel({
       });
       form.reset();
     } catch (error) {
-      setPostError(
-        error instanceof Error ? error.message : "We could not publish your post. Please try again.",
-      );
+      setPostError(toUserFacingError(error, "We could not publish your post. Please try again."));
     } finally {
       setSubmittingPost(false);
     }
@@ -132,9 +131,7 @@ export function CommunityPanel({
       });
       form.reset();
     } catch (error) {
-      setCommentError(
-        error instanceof Error ? error.message : "We could not add your comment. Please try again.",
-      );
+      setCommentError(toUserFacingError(error, "We could not add your comment. Please try again."));
     } finally {
       setSubmittingCommentFor(null);
     }

@@ -39,11 +39,11 @@ export function SearchBar({ filters, schoolName, onFiltersChange }: SearchBarPro
         <p className="text-sm font-normal text-muted-foreground">
           {deferredSearch ? `Searching for “${deferredSearch}”` : "Browse everything"}
         </p>
-        {schoolName ? (
-          <p className="text-sm font-normal text-muted-foreground">
-            Showing resources from {schoolName}
-          </p>
-        ) : null}
+        <p className="text-sm font-normal text-muted-foreground">
+          {schoolName
+            ? `Showing common resources and school resources from ${schoolName}`
+            : "Showing common resources for everyone"}
+        </p>
       </div>
 
       <div className="space-y-2">

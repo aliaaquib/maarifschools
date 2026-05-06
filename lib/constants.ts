@@ -1,13 +1,12 @@
 import {
   BookMarked,
-  ChartColumnBig,
+  BookOpenText,
   FolderKanban,
+  House,
   LayoutGrid,
-  MessageSquareText,
+  MessageCircleMore,
   School,
-  Sparkles,
-  Upload,
-  UserCircle2,
+  Settings,
 } from "lucide-react";
 
 export const SUBJECT_OPTIONS = [
@@ -36,15 +35,13 @@ export const GRADE_OPTIONS = [
 ];
 
 export const NAV_ITEMS = [
-  { id: "dashboard", label: "Dashboard", icon: ChartColumnBig },
-  { id: "all", label: "All Resources", icon: LayoutGrid },
-  { id: "trending", label: "Trending", icon: Sparkles },
+  { id: "dashboard", label: "Dashboard", icon: House },
+  { id: "all", label: "Resources", icon: LayoutGrid },
   { id: "mine", label: "My Resources", icon: FolderKanban },
-  { id: "upload", label: "Upload", icon: Upload },
+  { id: "community", label: "Community", icon: BookOpenText },
   { id: "school-chat", label: "School Chat", icon: School },
-  { id: "community", label: "Community", icon: MessageSquareText },
   { id: "bookmarks", label: "Bookmarks", icon: BookMarked },
-  { id: "profile", label: "Profile", icon: UserCircle2 },
+  { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
 export type NavigationItemId = (typeof NAV_ITEMS)[number]["id"];

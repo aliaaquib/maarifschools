@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { toUserFacingError } from "@/lib/errors";
 import { getSchools } from "@/lib/supabase-data";
 import { getSupabaseConnectionErrorMessage, isNetworkFetchError, isSupabaseConfigured } from "@/lib/supabase";
 import { SchoolRecord } from "@/types";
@@ -24,6 +25,22 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [schools, setSchools] = useState<SchoolRecord[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [selectedSchoolId, setSelectedSchoolId] = useState("");
+
+  useEffect(() => {
+    if (mode !== "signup") {
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const schoolIdFromInvite = new URLSearchParams(window.location.search).get("schoolId") ?? "";
+    if (schoolIdFromInvite) {
+      setSelectedSchoolId(schoolIdFromInvite);
+    }
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== "signup") {
@@ -56,9 +73,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           setError(
             isNetworkFetchError(schoolError)
               ? getSupabaseConnectionErrorMessage("load schools")
-              : schoolError instanceof Error
-                ? schoolError.message
-                : "We could not load schools right now.",
+              : toUserFacingError(schoolError, "We could not load schools right now."),
           );
         }
       } finally {
@@ -84,7 +99,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
     const name = String(formData.get("name") ?? "");
-    const schoolId = String(formData.get("schoolId") ?? "");
+    const schoolId = selectedSchoolId || String(formData.get("schoolId") ?? "");
 
     try {
       if (mode === "signup") {
@@ -106,9 +121,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       router.replace("/app");
     } catch (submitError) {
       setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Something went wrong. Please try again.",
+        toUserFacingError(submitError, "Something went wrong. Please try again."),
       );
     } finally {
       setIsLoading(false);
@@ -137,7 +150,8 @@ export function AuthForm({ mode }: AuthFormProps) {
             required
             disabled={loadingSchools || schools.length === 0}
             className="flex h-11 w-full rounded-lg border border-border bg-card px-4 text-sm font-normal text-foreground outline-none transition-all duration-150 focus:ring-1 focus:ring-black/10 dark:focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-            defaultValue=""
+            value={selectedSchoolId}
+            onChange={(event) => setSelectedSchoolId(event.target.value)}
           >
             <option value="">
               {loadingSchools ? "Loading schools..." : error ? "Unable to load schools" : "Select School"}
@@ -175,9 +189,7 @@ export function AuthForm({ mode }: AuthFormProps) {
                   setError(
                     isNetworkFetchError(schoolError)
                       ? getSupabaseConnectionErrorMessage("load schools")
-                      : schoolError instanceof Error
-                        ? schoolError.message
-                        : "We could not load schools right now.",
+                      : toUserFacingError(schoolError, "We could not load schools right now."),
                   );
                 } finally {
                   setLoadingSchools(false);

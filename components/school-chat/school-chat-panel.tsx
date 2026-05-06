@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
+import { toUserFacingError } from "@/lib/errors";
 import { SchoolMessage } from "@/types";
 import { formatRelativeDate, initials } from "@/lib/utils";
 
@@ -45,7 +46,7 @@ export function SchoolChatPanel({
       await onSendMessage(content);
       form.reset();
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "Could not send message.");
+      setError(toUserFacingError(sendError, "Could not send message."));
     } finally {
       setSending(false);
     }
