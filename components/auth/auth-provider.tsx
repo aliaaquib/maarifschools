@@ -27,6 +27,8 @@ interface AuthContextValue {
     schoolId: string;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   signIn: (payload: { email: string; password: string }) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
   saveProfile: (payload: {
     name: string;
     subject: string;
@@ -75,6 +77,21 @@ function createFallbackProfile(user: User | null): UserProfile {
 function getReadableAuthError(error: unknown, action: "create your account" | "sign you in") {
   if (isNetworkFetchError(error)) {
     return getSupabaseConnectionErrorMessage(action);
+  }
+
+  if (error instanceof Error) {
+    const lowered = error.message.toLowerCase();
+
+    if (
+      lowered.includes("invalid login credentials") ||
+      lowered.includes("invalid email or password")
+    ) {
+      return "The email or password you entered is incorrect. Please check both and try again.";
+    }
+
+    if (lowered.includes("email not confirmed")) {
+      return "Your email address has not been confirmed yet. Please check your inbox and confirm your account first.";
+    }
   }
 
   return toUserFacingError(error, "Something went wrong. Please try again.");
@@ -296,6 +313,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (error) {
           throw new Error(getReadableAuthError(error, "sign you in"));
+        }
+      },
+      async requestPasswordReset(email) {
+        if (!isSupabaseConfigured) {
+          console.error("Missing Supabase env vars", missingSupabaseEnvVars);
+          throw new Error("This service is not ready yet. Please try again in a moment.");
+        }
+
+        const redirectTo =
+          typeof window !== "undefined"
+            ? `${window.location.origin}/reset-password`
+            : undefined;
+
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo,
+        });
+
+        if (error) {
+          if (isNetworkFetchError(error)) {
+            throw new Error(getSupabaseConnectionErrorMessage("sign you in"));
+          }
+
+          throw new Error(toUserFacingError(error, "We couldn't send the reset link right now. Please try again."));
+        }
+      },
+      async updatePassword(password) {
+        if (!isSupabaseConfigured) {
+          console.error("Missing Supabase env vars", missingSupabaseEnvVars);
+          throw new Error("This service is not ready yet. Please try again in a moment.");
+        }
+
+        const { error } = await supabase.auth.updateUser({ password });
+
+        if (error) {
+          if (isNetworkFetchError(error)) {
+            throw new Error(getSupabaseConnectionErrorMessage("sign you in"));
+          }
+
+          throw new Error(toUserFacingError(error, "We couldn't update your password right now. Please try again."));
         }
       },
       async saveProfile({ name, subject, grade, avatar }) {

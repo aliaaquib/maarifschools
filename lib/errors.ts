@@ -4,6 +4,10 @@ const SAFE_USER_MESSAGES = new Set([
   "Enter a topic first.",
   "Sign in to update your profile.",
   "Your account is not linked to a school yet.",
+  "Use at least 6 characters for your new password.",
+  "Your passwords do not match.",
+  "The email or password you entered is incorrect. Please check both and try again.",
+  "Your email address has not been confirmed yet. Please check your inbox and confirm your account first.",
 ]);
 
 const INTERNAL_ERROR_PATTERNS = [

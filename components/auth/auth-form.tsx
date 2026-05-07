@@ -137,10 +137,10 @@ export function AuthForm({ mode }: AuthFormProps) {
     <Card className="w-full max-w-md animate-fade-up p-8">
       <div className="mb-8 space-y-2">
         <p className="text-sm uppercase tracking-[0.25em] text-muted-foreground">
-          Teacher collaboration
+          TeachShare
         </p>
         <h1 className="text-3xl font-semibold text-foreground">
-          {mode === "signup" ? "Create your workspace" : "Welcome back"}
+          {mode === "signup" ? "Create your TeachShare account" : "Welcome back"}
         </h1>
         <p className="text-sm text-muted-foreground">
           Share resources, coordinate lesson plans, and keep your school community aligned.
@@ -216,27 +216,39 @@ export function AuthForm({ mode }: AuthFormProps) {
         >
           {mode === "signup" ? "Create account" : "Sign in"}
         </Button>
+
       </form>
 
-      <p className="mt-6 text-sm text-muted-foreground">
-        {mode === "signup" ? "Already have an account?" : "Need an account?"}{" "}
-        <Link
-          href={
-            mode === "signup"
-              ? `/login${nextDestination ? `?next=${encodeURIComponent(nextDestination)}` : ""}`
-              : `/signup${[
-                  nextDestination ? `next=${encodeURIComponent(nextDestination)}` : "",
-                  selectedSchoolId ? `schoolId=${encodeURIComponent(selectedSchoolId)}` : "",
-                ]
-                  .filter(Boolean)
-                  .join("&")
-                  .replace(/^/, "?")}`
-          }
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          {mode === "signup" ? "Sign in" : "Create one"}
-        </Link>
-      </p>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+        <p>
+          {mode === "signup" ? "Already have an account?" : "Need an account?"}{" "}
+          <Link
+            href={
+              mode === "signup"
+                ? `/login${nextDestination ? `?next=${encodeURIComponent(nextDestination)}` : ""}`
+                : `/signup${[
+                    nextDestination ? `next=${encodeURIComponent(nextDestination)}` : "",
+                    selectedSchoolId ? `schoolId=${encodeURIComponent(selectedSchoolId)}` : "",
+                  ]
+                    .filter(Boolean)
+                    .join("&")
+                    .replace(/^/, "?")}`
+            }
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            {mode === "signup" ? "Sign in" : "Create one"}
+          </Link>
+        </p>
+
+        {mode === "login" ? (
+          <Link
+            href="/forgot-password"
+            className="font-medium text-[#6D28D9] underline underline-offset-4"
+          >
+            Forgot password?
+          </Link>
+        ) : null}
+      </div>
     </Card>
   );
 }

@@ -80,7 +80,7 @@ function SidebarInner({
           </div>
           <div>
             <p className="text-[15px] font-semibold text-[#111827]">TeachShare</p>
-            <p className="text-sm text-[#6B7280]">Teacher Collaboration</p>
+            <p className="text-sm text-[#6B7280]">TeachShare</p>
           </div>
         </div>
       </div>

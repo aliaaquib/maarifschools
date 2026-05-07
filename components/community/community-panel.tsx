@@ -142,7 +142,7 @@ export function CommunityPanel({
 
     if (navigator.share) {
       await navigator.share({
-        title: "Maarif Schools discussion",
+        title: "TeachShare discussion",
         text: post.content,
         url: shareUrl,
       });

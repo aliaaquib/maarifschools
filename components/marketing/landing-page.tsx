@@ -44,7 +44,7 @@ export function LandingPage() {
       <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between px-4 py-4 md:px-8">
           <Link href="/" className="text-sm font-semibold tracking-tight text-foreground">
-            Maarif Schools
+            TeachShare
           </Link>
 
           <nav className="flex items-center gap-2 md:gap-3">
@@ -153,7 +153,7 @@ export function LandingPage() {
 
       <footer className="border-t border-border px-4 py-8 md:px-8">
         <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-          <p>Maarif Schools</p>
+          <p>TeachShare</p>
           <div className="flex items-center gap-4">
             <Link href="/login" className="transition hover:text-foreground">
               Login

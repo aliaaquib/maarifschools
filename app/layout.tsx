@@ -6,8 +6,8 @@ import { AuthProvider } from "@/components/auth/auth-provider";
 import { ThemeProvider } from "@/components/auth/theme-provider";
 
 export const metadata: Metadata = {
-  title: "Maarif Schools Workspace",
-  description: "Teacher collaboration workspace for resources, discussion, and lesson planning.",
+  title: "TeachShare",
+  description: "TeachShare is a collaborative workspace for classes, resources, discussion, and lesson planning.",
   icons: {
     icon: "/favicon.svg",
   },
