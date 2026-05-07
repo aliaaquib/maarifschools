@@ -1,31 +1,28 @@
 "use client";
 
-import { FormEvent, useState } from "react";
 import Image from "next/image";
-import { ArrowRight, BookOpen, ChevronLeft, Flame, FolderOpen, MessageCircle, MessagesSquare, School2, Send, Upload, Users } from "lucide-react";
+import { ArrowRight, BookOpen, Flame, FolderOpen, MessageCircle, School2, Upload, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { DEFAULT_SCHOOL_CHAT_ROOMS } from "@/lib/constants";
-import { toUserFacingError } from "@/lib/errors";
-import { ResourceRecord, DiscussionPost, DiscussionComment, SchoolMessage, UserProfile } from "@/types";
-import { formatRelativeDate, initials } from "@/lib/utils";
+import { MyClassesCard } from "@/components/dashboard/my-classes-card";
+import { ClassRecord, ResourceRecord, DiscussionPost, DiscussionComment, UserProfile } from "@/types";
 
 interface DashboardOverviewProps {
   profile: UserProfile;
+  classes: ClassRecord[];
   resources: ResourceRecord[];
   myResources: ResourceRecord[];
   posts: DiscussionPost[];
   comments: DiscussionComment[];
-  schoolMessages: SchoolMessage[];
   onOpenUpload: () => void;
   onInviteTeachers: () => void;
   onStartDiscussion: () => void;
   onExploreResources: () => void;
-  onOpenSchoolChat: () => void;
-  onSendSchoolMessage: (input: { content: string; room: SchoolMessage["room"] }) => Promise<void>;
   onSelectResource: (resource: ResourceRecord) => void;
+  onOpenMyClasses: () => void;
+  onInviteStudents: (classId: string) => void;
+  onOpenClass: (classId: string) => void;
   currentUserId: string;
 }
 
@@ -58,24 +55,21 @@ function getDiscussionParticipants(post: DiscussionPost, comments: DiscussionCom
 
 export function DashboardOverview({
   profile,
+  classes,
   resources,
   myResources,
   posts,
   comments,
-  schoolMessages,
   onOpenUpload,
   onInviteTeachers,
   onStartDiscussion,
   onExploreResources,
-  onOpenSchoolChat,
-  onSendSchoolMessage,
   onSelectResource,
+  onOpenMyClasses,
+  onInviteStudents,
+  onOpenClass,
   currentUserId,
 }: DashboardOverviewProps) {
-  const [isMiniChatOpen, setIsMiniChatOpen] = useState(false);
-  const [activeMiniChatRoom, setActiveMiniChatRoom] = useState<SchoolMessage["room"]>("general");
-  const [sendingMessage, setSendingMessage] = useState(false);
-  const [miniChatError, setMiniChatError] = useState("");
   const greetingName = profile.name.split(" ")[0] || "Teacher";
   const schoolName = profile.schoolName || "Maarif International School";
   const schoolResources = resources.filter((resource) => resource.resourceScope === "school");
@@ -85,46 +79,6 @@ export function DashboardOverview({
     return created.toDateString() === now.toDateString();
   }).length;
   const highlightedPost = posts[0] ?? null;
-  const chatGroups = DEFAULT_SCHOOL_CHAT_ROOMS.map((room) => {
-    const roomMessages = schoolMessages.filter((message) => message.room === room.id);
-    const latestMessage = roomMessages[roomMessages.length - 1] ?? null;
-
-    return {
-      id: room.id,
-      name: room.name,
-      preview: latestMessage?.content || room.fallbackPreview,
-      time: latestMessage ? formatRelativeDate(latestMessage.createdAt) : "No messages yet",
-      unread: latestMessage ? 1 : 0,
-      tone: room.tone,
-    };
-  });
-
-  const activeMiniChatMeta =
-    DEFAULT_SCHOOL_CHAT_ROOMS.find((room) => room.id === activeMiniChatRoom) ?? DEFAULT_SCHOOL_CHAT_ROOMS[0];
-  const activeMiniChatMessages = schoolMessages.filter((message) => message.room === activeMiniChatRoom);
-
-  async function handleMiniChatSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    const content = String(formData.get("content") ?? "").trim();
-
-    if (!content) {
-      return;
-    }
-
-    setSendingMessage(true);
-    setMiniChatError("");
-
-    try {
-      await onSendSchoolMessage({ content, room: activeMiniChatRoom });
-      form.reset();
-    } catch (error) {
-      setMiniChatError(toUserFacingError(error, "Could not send message."));
-    } finally {
-      setSendingMessage(false);
-    }
-  }
 
   return (
     <div className="grid h-full gap-5 xl:grid-cols-[minmax(0,2fr)_320px]">
@@ -259,167 +213,12 @@ export function DashboardOverview({
       </div>
 
       <div className="space-y-3.5">
-        <Card className="h-full rounded-[12px] border-[#E5E7EB] bg-white p-4 shadow-[0_4px_16px_rgba(17,24,39,0.03)]">
-          {!isMiniChatOpen ? (
-            <>
-              <div className="flex items-center justify-between">
-                <h3 className="text-[18px] font-semibold text-[#111827]">School Chat</h3>
-                <button className="text-sm font-medium text-[#6D28D9]" onClick={() => setIsMiniChatOpen(true)}>
-                  Create thread
-                </button>
-              </div>
-              <div className="mt-4 space-y-3">
-                {chatGroups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveMiniChatRoom(group.id);
-                      setIsMiniChatOpen(true);
-                    }}
-                    className="flex w-full items-start gap-3 rounded-2xl border border-[#F3F4F6] px-3 py-2.5 text-left transition-all duration-150 hover:bg-[#F9FAFB]"
-                  >
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${group.tone}`}>
-                      <MessagesSquare className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-[#111827]">{group.name}</p>
-                        <span className="text-sm text-[#9CA3AF]">{group.time}</span>
-                      </div>
-                      <p className="mt-1 line-clamp-1 text-sm text-[#6B7280]">{group.preview}</p>
-                    </div>
-                    {group.unread > 0 ? (
-                      <div className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[#6D28D9] px-1.5 text-xs font-semibold text-white">
-                        {group.unread}
-                      </div>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-              <button
-                className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-[#6D28D9]"
-                onClick={() => {
-                  setActiveMiniChatRoom("general");
-                  setIsMiniChatOpen(true);
-                }}
-              >
-                View all conversations <ArrowRight className="h-4 w-4" />
-              </button>
-            </>
-          ) : (
-            <div className="flex h-full min-h-[520px] flex-col">
-              <div className="flex items-center justify-between border-b border-[#F3F4F6] pb-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 text-sm font-medium text-[#6D28D9]"
-                    onClick={() => setIsMiniChatOpen(false)}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Back
-                  </button>
-                  <div>
-                    <h3 className="text-[18px] font-semibold text-[#111827]">School Chat</h3>
-                    <p className="text-sm text-[#6B7280]">{activeMiniChatMeta.name}</p>
-                  </div>
-                </div>
-                <button className="text-sm font-medium text-[#6D28D9]" onClick={onOpenSchoolChat}>
-                  Full view
-                </button>
-              </div>
-
-              <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {DEFAULT_SCHOOL_CHAT_ROOMS.map((room) => (
-                    <button
-                      key={room.id}
-                      type="button"
-                      onClick={() => setActiveMiniChatRoom(room.id)}
-                      className={`rounded-full px-3 py-1.5 text-xs transition ${
-                        room.id === activeMiniChatRoom
-                          ? "bg-[#F5F3FF] font-medium text-[#6D28D9]"
-                          : "border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F9FAFB]"
-                      }`}
-                    >
-                      {room.name}
-                    </button>
-                  ))}
-                </div>
-
-                {activeMiniChatMessages.length === 0 ? (
-                  <div className="flex h-full min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-[#E5E7EB] bg-[#FCFCFD] px-4 text-center">
-                    <div>
-                      <p className="text-sm font-medium text-[#111827]">No messages in {activeMiniChatMeta.name} yet</p>
-                      <p className="mt-1 text-sm text-[#6B7280]">
-                        Start the conversation with teachers in this room.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  activeMiniChatMessages.map((message) => {
-                    const isOwn = message.userId === currentUserId;
-
-                    return (
-                      <div key={message.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[88%] ${isOwn ? "items-end" : "items-start"} flex flex-col`}>
-                          <div className="mb-1 flex items-center gap-2 px-1">
-                            {!isOwn ? (
-                              <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[11px] font-semibold text-[#111827]">
-                                {message.userAvatar ? (
-                                  <img
-                                    src={message.userAvatar}
-                                    alt={message.userName}
-                                    className="h-full w-full rounded-full object-cover"
-                                  />
-                                ) : (
-                                  initials(message.userName)
-                                )}
-                              </div>
-                            ) : null}
-                            <p className="text-xs font-medium text-[#111827]">
-                              {isOwn ? "You" : message.userName}
-                            </p>
-                            <p className="text-xs text-[#9CA3AF]">{formatRelativeDate(message.createdAt)}</p>
-                          </div>
-                          <div
-                            className={`rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${
-                              isOwn
-                                ? "bg-[#6D28D9] text-white"
-                                : "border border-[#E5E7EB] bg-[#FCFCFD] text-[#111827]"
-                            }`}
-                          >
-                            <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <form className="mt-4 border-t border-[#F3F4F6] pt-4" onSubmit={handleMiniChatSubmit}>
-                <div className="space-y-3">
-                  <Textarea
-                    name="content"
-                    placeholder={`Write in ${activeMiniChatMeta.name}...`}
-                    className="min-h-[88px] resize-none"
-                    required
-                  />
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-h-[20px]">
-                      {miniChatError ? <p className="text-sm text-foreground/80">{miniChatError}</p> : null}
-                    </div>
-                    <Button type="submit" disabled={sendingMessage} loading={sendingMessage} loadingText="Sending...">
-                      <Send className="h-4 w-4" />
-                      Send
-                    </Button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          )}
-        </Card>
+        <MyClassesCard
+          classes={classes}
+          onOpenAll={onOpenMyClasses}
+          onInviteClass={onInviteStudents}
+          onOpenClass={onOpenClass}
+        />
       </div>
     </div>
   );

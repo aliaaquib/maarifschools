@@ -3,6 +3,8 @@ export type ResourceScope = "common" | "school";
 export type SchoolChatRoom = string;
 export type SchoolChatAttachmentType = "image" | "file" | "link";
 export type SchoolChatConversationType = "group" | "direct";
+export type ClassMemberRole = "teacher" | "student";
+export type ClassPostType = "announcement" | "discussion" | "assignment";
 
 export interface UserProfile {
   uid: string;
@@ -55,6 +57,45 @@ export interface SchoolTeacher {
   email: string;
   subject?: string;
   grade?: string;
+}
+
+export interface ClassRecord {
+  id: string;
+  teacherId: string;
+  schoolId: string;
+  name: string;
+  subject: string;
+  grade: string;
+  description: string;
+  inviteCode: string;
+  bannerUrl?: string | null;
+  createdAt: string;
+  studentCount: number;
+}
+
+export interface ClassMember {
+  id: string;
+  classId: string;
+  userId: string;
+  role: ClassMemberRole;
+  name: string;
+  email: string;
+  avatar?: string | null;
+  subject?: string;
+  grade?: string;
+  joinedAt: string;
+}
+
+export interface ClassPost {
+  id: string;
+  classId: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string | null;
+  type: ClassPostType;
+  title: string;
+  content: string;
+  createdAt: string;
 }
 
 export interface ResourceRecord {

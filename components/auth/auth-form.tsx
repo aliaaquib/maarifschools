@@ -26,19 +26,23 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
+  const [nextDestination, setNextDestination] = useState("/app");
 
   useEffect(() => {
-    if (mode !== "signup") {
-      return;
-    }
-
     if (typeof window === "undefined") {
       return;
     }
 
-    const schoolIdFromInvite = new URLSearchParams(window.location.search).get("schoolId") ?? "";
-    if (schoolIdFromInvite) {
-      setSelectedSchoolId(schoolIdFromInvite);
+    const params = new URLSearchParams(window.location.search);
+    setNextDestination(params.get("next") || "/app");
+
+    if (mode !== "signup") {
+      return;
+    }
+
+    const schoolIdFromQuery = params.get("schoolId") || "";
+    if (schoolIdFromQuery) {
+      setSelectedSchoolId(schoolIdFromQuery);
     }
   }, [mode]);
 
@@ -111,14 +115,15 @@ export function AuthForm({ mode }: AuthFormProps) {
 
         if (result.needsEmailConfirmation) {
           setSuccess("Account created. Check your email to confirm your account, then sign in.");
-          router.replace("/login");
+          const nextLoginHref = `/login${nextDestination ? `?next=${encodeURIComponent(nextDestination)}` : ""}`;
+          router.replace(nextLoginHref);
           return;
         }
       } else {
         await signIn({ email, password });
       }
 
-      router.replace("/app");
+      router.replace(nextDestination);
     } catch (submitError) {
       setError(
         toUserFacingError(submitError, "Something went wrong. Please try again."),
@@ -216,7 +221,17 @@ export function AuthForm({ mode }: AuthFormProps) {
       <p className="mt-6 text-sm text-muted-foreground">
         {mode === "signup" ? "Already have an account?" : "Need an account?"}{" "}
         <Link
-          href={mode === "signup" ? "/login" : "/signup"}
+          href={
+            mode === "signup"
+              ? `/login${nextDestination ? `?next=${encodeURIComponent(nextDestination)}` : ""}`
+              : `/signup${[
+                  nextDestination ? `next=${encodeURIComponent(nextDestination)}` : "",
+                  selectedSchoolId ? `schoolId=${encodeURIComponent(selectedSchoolId)}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("&")
+                  .replace(/^/, "?")}`
+          }
           className="font-medium text-foreground underline underline-offset-4"
         >
           {mode === "signup" ? "Sign in" : "Create one"}

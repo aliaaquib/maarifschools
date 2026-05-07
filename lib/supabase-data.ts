@@ -1,6 +1,10 @@
 import { RealtimeChannel } from "@supabase/supabase-js";
 
 import {
+  ClassMember,
+  ClassPost,
+  ClassRecord,
+  ClassPostType,
   CreateResourceInput,
   DiscussionComment,
   DiscussionPost,
@@ -84,13 +88,70 @@ function normalizeTeacher(raw: Row): SchoolTeacher {
   };
 }
 
+function normalizeClassRecord(raw: Row): ClassRecord {
+  return {
+    id: String(raw.id ?? ""),
+    teacherId: String(raw.teacher_id ?? ""),
+    schoolId: String(raw.school_id ?? ""),
+    name: String(raw.name ?? "Class"),
+    subject: String(raw.subject ?? ""),
+    grade: String(raw.grade ?? ""),
+    description: String(raw.description ?? ""),
+    inviteCode: String(raw.invite_code ?? ""),
+    bannerUrl: raw.banner_url ? String(raw.banner_url) : null,
+    createdAt: toIsoDate(raw.created_at),
+    studentCount:
+      typeof raw.student_count === "number"
+        ? raw.student_count
+        : typeof raw.student_count === "string"
+          ? Number(raw.student_count)
+          : 0,
+  };
+}
+
+function normalizeClassMember(raw: Row): ClassMember {
+  const user = raw.users as Row | null | undefined;
+  return {
+    id: String(raw.id ?? ""),
+    classId: String(raw.class_id ?? ""),
+    userId: String(raw.user_id ?? ""),
+    role: raw.role === "teacher" ? "teacher" : "student",
+    name: String(user?.name ?? raw.name ?? "Member"),
+    email: String(user?.email ?? raw.email ?? ""),
+    avatar: user?.avatar ? String(user.avatar) : null,
+    subject: user?.subject ? String(user.subject) : "",
+    grade: user?.grade ? String(user.grade) : "",
+    joinedAt: toIsoDate(raw.joined_at),
+  };
+}
+
+function normalizeClassPost(raw: Row): ClassPost {
+  const user = raw.users as Row | null | undefined;
+  return {
+    id: String(raw.id ?? ""),
+    classId: String(raw.class_id ?? ""),
+    authorId: String(raw.author_id ?? ""),
+    authorName: String(user?.name ?? "Teacher"),
+    authorAvatar: user?.avatar ? String(user.avatar) : null,
+    type:
+      raw.type === "assignment" || raw.type === "discussion"
+        ? raw.type
+        : "announcement",
+    title: String(raw.title ?? ""),
+    content: String(raw.content ?? ""),
+    createdAt: toIsoDate(raw.created_at),
+  };
+}
+
 function normalizeSchoolMessage(raw: Row): SchoolMessage {
   const user = raw.users as Row | null | undefined;
+  const normalizedRoom =
+    typeof raw.room === "string" && raw.room.trim().length > 0 ? raw.room : "general";
 
   return {
     id: String(raw.id ?? ""),
     schoolId: String(raw.school_id ?? ""),
-    room: raw.room === "grade-3" || raw.room === "science" ? raw.room : "general",
+    room: normalizedRoom,
     userId: String(raw.user_id ?? ""),
     userName: String(user?.name ?? "Teacher"),
     userAvatar: user?.avatar ? String(user.avatar) : null,
@@ -239,6 +300,27 @@ async function attachResourceVersions(rows: Row[]) {
   }));
 }
 
+async function getResourcesByIds(resourceIds: string[]) {
+  if (resourceIds.length === 0) {
+    return [] as ResourceRecord[];
+  }
+
+  const { data, error } = await supabase
+    .from("resources")
+    .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, created_at")
+    .in("id", resourceIds)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  let rows = (data ?? []) as Row[];
+  rows = await attachUsers(rows);
+  rows = await attachResourceVersions(rows);
+  return rows.map((row) => normalizeResource(row));
+}
+
 function createRealtimeChannel(
   name: string,
   table: string,
@@ -278,6 +360,300 @@ export async function getSchoolTeachers(schoolId: string) {
   }
 
   return (data ?? []).map((row) => normalizeTeacher(row as Row));
+}
+
+export async function getAllTeachers() {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, name, avatar, email, subject, grade")
+    .order("name", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => normalizeTeacher(row as Row));
+}
+
+export async function getTeacherClasses(teacherId: string, schoolId: string | null | undefined) {
+  if (!teacherId || !schoolId) {
+    return [] as ClassRecord[];
+  }
+
+  const { data, error } = await supabase
+    .from("classes")
+    .select("*")
+    .eq("teacher_id", teacherId)
+    .eq("school_id", schoolId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const classes = (data ?? []).map((row) => normalizeClassRecord(row as Row));
+  if (classes.length === 0) {
+    return [];
+  }
+
+  const classIds = classes.map((item) => item.id);
+  const { data: membersData, error: membersError } = await supabase
+    .from("class_members")
+    .select("class_id, role")
+    .in("class_id", classIds)
+    .eq("role", "student");
+
+  if (membersError) {
+    return classes;
+  }
+
+  const countsByClassId = new Map<string, number>();
+  for (const member of (membersData ?? []) as Row[]) {
+    const classId = String(member.class_id ?? "");
+    countsByClassId.set(classId, (countsByClassId.get(classId) ?? 0) + 1);
+  }
+
+  return classes.map((item) => ({
+    ...item,
+    studentCount: countsByClassId.get(item.id) ?? item.studentCount,
+  }));
+}
+
+function generateInviteCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+export async function createClass(input: {
+  teacherId: string;
+  schoolId: string;
+  name: string;
+  subject: string;
+  grade: string;
+  description: string;
+  bannerUrl?: string | null;
+}) {
+  const payload = {
+    teacher_id: input.teacherId,
+    school_id: input.schoolId,
+    name: input.name,
+    subject: input.subject,
+    grade: input.grade,
+    description: input.description,
+    banner_url: input.bannerUrl ?? null,
+    invite_code: generateInviteCode(),
+  };
+
+  const { data, error } = await supabase
+    .from("classes")
+    .insert([payload])
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const createdClass = normalizeClassRecord({ ...(data as Row), student_count: 0 });
+
+  const { error: memberError } = await supabase
+    .from("class_members")
+    .insert([
+      {
+        class_id: createdClass.id,
+        user_id: input.teacherId,
+        role: "teacher",
+      },
+    ]);
+
+  if (memberError) {
+    throw new Error(memberError.message);
+  }
+
+  return createdClass;
+}
+
+export async function getClassMembers(classId: string) {
+  const joinedQuery = await supabase
+    .from("class_members")
+    .select("id, class_id, user_id, role, joined_at, users(name, email, avatar, subject, grade)")
+    .eq("class_id", classId)
+    .order("joined_at", { ascending: true });
+
+  if (!joinedQuery.error) {
+    return (joinedQuery.data ?? []).map((row) => normalizeClassMember(row as Row));
+  }
+
+  const fallbackQuery = await supabase
+    .from("class_members")
+    .select("id, class_id, user_id, role, joined_at")
+    .eq("class_id", classId)
+    .order("joined_at", { ascending: true });
+
+  if (fallbackQuery.error) {
+    throw new Error(fallbackQuery.error.message);
+  }
+
+  const rowsWithUsers = await attachUsers((fallbackQuery.data ?? []) as Row[]);
+  return rowsWithUsers.map((row) => normalizeClassMember(row as Row));
+}
+
+export async function removeClassMember(classId: string, userId: string) {
+  const { error } = await supabase
+    .from("class_members")
+    .delete()
+    .eq("class_id", classId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function getClassPosts(classId: string) {
+  const joinedQuery = await supabase
+    .from("class_posts")
+    .select("id, class_id, author_id, type, title, content, created_at, users(name, avatar)")
+    .eq("class_id", classId)
+    .order("created_at", { ascending: false });
+
+  if (!joinedQuery.error) {
+    return (joinedQuery.data ?? []).map((row) => normalizeClassPost(row as Row));
+  }
+
+  const fallbackQuery = await supabase
+    .from("class_posts")
+    .select("id, class_id, author_id, type, title, content, created_at")
+    .eq("class_id", classId)
+    .order("created_at", { ascending: false });
+
+  if (fallbackQuery.error) {
+    throw new Error(fallbackQuery.error.message);
+  }
+
+  const rowsWithUsers = await attachUsers((fallbackQuery.data ?? []) as Row[], "author_id");
+  return rowsWithUsers.map((row) => normalizeClassPost(row as Row));
+}
+
+export async function createClassPost(input: {
+  classId: string;
+  authorId: string;
+  type: ClassPostType;
+  title: string;
+  content: string;
+}) {
+  const joinedInsert = await supabase
+    .from("class_posts")
+    .insert([
+      {
+        class_id: input.classId,
+        author_id: input.authorId,
+        type: input.type,
+        title: input.title,
+        content: input.content,
+      },
+    ])
+    .select("id, class_id, author_id, type, title, content, created_at, users(name, avatar)")
+    .single();
+
+  if (!joinedInsert.error && joinedInsert.data) {
+    return normalizeClassPost(joinedInsert.data as Row);
+  }
+
+  const fallbackInsert = await supabase
+    .from("class_posts")
+    .insert([
+      {
+        class_id: input.classId,
+        author_id: input.authorId,
+        type: input.type,
+        title: input.title,
+        content: input.content,
+      },
+    ])
+    .select("id, class_id, author_id, type, title, content, created_at")
+    .single();
+
+  if (fallbackInsert.error || !fallbackInsert.data) {
+    throw new Error(fallbackInsert.error?.message ?? joinedInsert.error?.message ?? "Could not create class post.");
+  }
+
+  const [rowWithUser] = await attachUsers([fallbackInsert.data as Row], "author_id");
+  return normalizeClassPost(rowWithUser as Row);
+}
+
+export async function getClassResources(classId: string) {
+  const { data, error } = await supabase
+    .from("class_resources")
+    .select("resource_id")
+    .eq("class_id", classId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const resourceIds = Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => String((row as Row).resource_id ?? ""))
+        .filter(Boolean),
+    ),
+  );
+
+  return getResourcesByIds(resourceIds);
+}
+
+export async function addResourceToClass(classId: string, resourceId: string) {
+  const { error } = await supabase
+    .from("class_resources")
+    .upsert([{ class_id: classId, resource_id: resourceId }], { onConflict: "class_id,resource_id" });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function getClassByInviteCode(inviteCode: string) {
+  const { data, error } = await supabase
+    .from("classes")
+    .select("*")
+    .eq("invite_code", inviteCode)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return normalizeClassRecord(data as Row);
+}
+
+export async function joinClassByInviteCode(inviteCode: string, userId: string) {
+  const classRecord = await getClassByInviteCode(inviteCode);
+  if (!classRecord) {
+    throw new Error("Class not found.");
+  }
+
+  const { error } = await supabase
+    .from("class_members")
+    .upsert(
+      [
+        {
+          class_id: classRecord.id,
+          user_id: userId,
+          role: "student",
+        },
+      ],
+      { onConflict: "class_id,user_id" },
+    );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return classRecord;
 }
 
 export async function getSchoolChatConversations(schoolId: string) {
@@ -353,6 +729,26 @@ export async function createSchoolChatConversation(input: {
   }
 
   return normalizeSchoolConversation(data as Row);
+}
+
+export async function deleteSchoolChatConversation(conversationId: string) {
+  const { error: messagesError } = await supabase
+    .from("school_messages")
+    .delete()
+    .eq("room", conversationId);
+
+  if (messagesError) {
+    throw new Error(messagesError.message);
+  }
+
+  const { error } = await supabase
+    .from("school_chat_rooms")
+    .delete()
+    .eq("id", conversationId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 async function getSchoolNameById(schoolId: string | null | undefined) {
@@ -476,7 +872,7 @@ export function getSchoolMessages(
 
     const fallbackQuery = await supabase
       .from("school_messages")
-      .select("id, school_id, user_id, content, created_at")
+      .select("id, school_id, room, user_id, content, created_at")
       .eq("school_id", schoolId)
       .order("created_at", { ascending: true });
 
@@ -592,7 +988,7 @@ export async function createSchoolMessage(input: {
     const attempt = await supabase
       .from("school_messages")
       .insert([payload])
-      .select("id, school_id, user_id, content, created_at")
+      .select("id, school_id, room, user_id, content, created_at")
       .single();
 
     if (!attempt.error && attempt.data) {

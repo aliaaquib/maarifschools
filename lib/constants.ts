@@ -3,6 +3,7 @@ import { SchoolChatConversation, SchoolChatRoom } from "@/types";
 import {
   BookMarked,
   BookOpenText,
+  GraduationCap,
   FolderKanban,
   House,
   LayoutGrid,
@@ -68,6 +69,7 @@ export const DEFAULT_SCHOOL_CHAT_ROOMS: Array<{
 
 export const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: House },
+  { id: "classes", label: "Classes", icon: GraduationCap },
   { id: "all", label: "Resources", icon: LayoutGrid },
   { id: "mine", label: "My Resources", icon: FolderKanban },
   { id: "community", label: "Community", icon: BookOpenText },

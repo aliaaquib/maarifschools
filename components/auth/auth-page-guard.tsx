@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type React from "react";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -10,12 +10,22 @@ import { isAuthRequired, isSupabaseConfigured } from "@/lib/supabase";
 export function AuthPageGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const [nextDestination, setNextDestination] = useState("/app");
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    setNextDestination(params.get("next") || "/app");
+  }, []);
 
   useEffect(() => {
     if (isAuthRequired && isSupabaseConfigured && !loading && user) {
-      router.replace("/app");
+      router.replace(nextDestination);
     }
-  }, [loading, router, user]);
+  }, [loading, nextDestination, router, user]);
 
   if (isAuthRequired && isSupabaseConfigured && loading && user) {
     return (

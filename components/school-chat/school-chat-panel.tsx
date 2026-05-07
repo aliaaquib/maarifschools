@@ -49,6 +49,7 @@ type GroupInfoTab = "members" | "media" | "files" | "links" | "pinned";
 interface SchoolChatPanelProps {
   schoolName?: string | null;
   conversations: SchoolChatConversation[];
+  schoolTeachers: SchoolTeacher[];
   teachers: SchoolTeacher[];
   messages: SchoolMessage[];
   loading: boolean;
@@ -66,6 +67,7 @@ interface SchoolChatPanelProps {
     type: SchoolChatConversation["type"];
     memberIds: string[];
   }) => Promise<SchoolChatConversation>;
+  onDeleteConversation: (conversationId: string) => Promise<void>;
 }
 
 const EMOJI_REACTIONS = [
@@ -398,6 +400,7 @@ function getConversationDescription(conversation: SchoolChatConversation) {
 export function SchoolChatPanel({
   schoolName,
   conversations,
+  schoolTeachers,
   teachers,
   messages,
   loading,
@@ -406,6 +409,7 @@ export function SchoolChatPanel({
   currentUserAvatar,
   onSendMessage,
   onCreateConversation,
+  onDeleteConversation,
 }: SchoolChatPanelProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -599,6 +603,15 @@ export function SchoolChatPanel({
   const teacherMap = useMemo(
     () => new Map(teachers.map((teacher) => [teacher.id, teacher])),
     [teachers],
+  );
+  const isDefaultConversation = Boolean(
+    activeRoomMeta && DEFAULT_SCHOOL_CHAT_ROOMS.some((room) => room.id === activeRoomMeta.id),
+  );
+  const canDeleteConversation = Boolean(
+    activeRoomMeta &&
+      activeRoomMeta.type === "group" &&
+      !isDefaultConversation &&
+      activeRoomMeta.createdBy === currentUserId,
   );
 
   const activeMembers = useMemo(() => {
@@ -823,15 +836,26 @@ export function SchoolChatPanel({
   async function handleCreateConversationSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const memberIds = Array.from(new Set(selectedTeacherIds.filter(Boolean)));
+    const memberIds = Array.from(
+      new Set(
+        (conversationType === "group"
+          ? schoolTeachers.map((teacher) => teacher.id).filter((id) => id !== currentUserId)
+          : selectedTeacherIds
+        ).filter(Boolean),
+      ),
+    );
     const trimmedName = conversationName.trim();
     const resolvedName =
       conversationType === "direct"
         ? teachers.find((teacher) => teacher.id === memberIds[0])?.name ?? "Direct chat"
         : trimmedName;
 
-    if ((conversationType === "group" && !resolvedName) || memberIds.length === 0) {
-      setError("Choose teachers and complete the conversation details.");
+    if ((conversationType === "group" && !resolvedName) || (conversationType === "direct" && memberIds.length === 0)) {
+      setError(
+        conversationType === "group"
+          ? "Add a group name. All teachers in your school will be included automatically."
+          : "Choose a teacher to start a direct message.",
+      );
       return;
     }
 
@@ -1078,6 +1102,17 @@ export function SchoolChatPanel({
                       { label: "Pinned Messages", action: () => openInfoPanel("pinned") },
                       { label: "Notification Settings", action: () => openInfoPanel("links") },
                       { label: "Leave Group", action: () => setIsMenuOpen(false) },
+                      ...(canDeleteConversation
+                        ? [
+                            {
+                              label: "Delete Group",
+                              action: async () => {
+                                setIsMenuOpen(false);
+                                await onDeleteConversation(activeRoomMeta.id);
+                              },
+                            },
+                          ]
+                        : []),
                     ].map((item) => (
                       <button
                         key={item.label}
@@ -1491,13 +1526,27 @@ export function SchoolChatPanel({
                     placeholder="e.g. ICT Teachers"
                     className="h-11 rounded-2xl border-[#E5E7EB]"
                   />
+                  <div className="mt-3 rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] px-4 py-4">
+                    <p className="text-sm font-medium text-[#111827]">Who will be included</p>
+                    <p className="mt-1 text-sm text-[#6B7280]">
+                      This group will automatically include all teachers from {schoolName ?? "your school"}.
+                    </p>
+                    <p className="mt-2 text-xs text-[#9CA3AF]">
+                      {Math.max(1, schoolTeachers.length)} teachers available in this school
+                    </p>
+                  </div>
                 </div>
               ) : null}
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#111827]">
-                  {conversationType === "group" ? "Choose teachers" : "Message teacher"}
-                </label>
+              {conversationType === "direct" ? (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#111827]">
+                    Message teacher
+                  </label>
+                </div>
+              ) : null}
+
+              {conversationType === "direct" ? (
                 <div className="max-h-[240px] space-y-2 overflow-y-auto rounded-2xl border border-[#E5E7EB] p-2">
                   {availableTeachers.map((teacher) => {
                     const isSelected = selectedTeacherIds.includes(teacher.id);
@@ -1506,14 +1555,7 @@ export function SchoolChatPanel({
                         key={teacher.id}
                         type="button"
                         onClick={() => {
-                          if (conversationType === "direct") {
-                            setSelectedTeacherIds([teacher.id]);
-                            return;
-                          }
-
-                          setSelectedTeacherIds((current) =>
-                            isSelected ? current.filter((id) => id !== teacher.id) : [...current, teacher.id],
-                          );
+                          setSelectedTeacherIds([teacher.id]);
                         }}
                         className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition ${
                           isSelected ? "bg-[#F5F3FF]" : "hover:bg-[#F9FAFB]"
@@ -1528,20 +1570,22 @@ export function SchoolChatPanel({
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-[#111827]">{teacher.name}</p>
-                          <p className="truncate text-xs text-[#6B7280]">{teacher.email}</p>
+                          <p className="truncate text-xs text-[#6B7280]">
+                            {teacher.email}{teacher.subject ? ` • ${teacher.subject}` : ""}
+                          </p>
                         </div>
                         {isSelected ? (
                           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#6D28D9] text-white">
                             <Check className="h-3.5 w-3.5" />
                           </div>
-                        ) : conversationType === "direct" ? (
+                        ) : (
                           <UserRound className="h-4 w-4 text-[#9CA3AF]" />
-                        ) : null}
+                        )}
                       </button>
                     );
                   })}
                 </div>
-              </div>
+              ) : null}
 
               <div className="flex justify-end gap-3">
                 <Button

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, Plus, UserRound } from "lucide-react";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
+import { ClassesWorkspace } from "@/components/classes/classes-workspace";
 import { CommunityPanel } from "@/components/community/community-panel";
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { InviteTeachersModal } from "@/components/invite/invite-teachers-modal";
@@ -26,19 +27,29 @@ import { toUserFacingError } from "@/lib/errors";
 import {
   createComment,
   createPost,
+  createClass,
+  createClassPost,
   createSchoolChatConversation,
   createSchoolMessage,
   deleteComment,
   deletePost,
   deleteResource,
+  deleteSchoolChatConversation,
   ensureUserProfile,
+  getClassMembers,
+  getClassPosts,
+  getClassResources,
   getComments,
+  getAllTeachers,
   getSchoolChatConversations,
   getSchoolTeachers,
+  getTeacherClasses,
   getVisibleResources,
   getUserProfile,
   getSchoolMessages,
   getPosts,
+  addResourceToClass,
+  removeClassMember,
   togglePostReaction,
   uploadAvatar,
   toggleResourceReaction,
@@ -51,6 +62,9 @@ import {
   missingSupabaseEnvVars,
 } from "@/lib/supabase";
 import {
+  ClassMember,
+  ClassPost,
+  ClassRecord,
   CreateResourceInput,
   DiscussionComment,
   DiscussionPost,
@@ -79,6 +93,13 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
   const [schoolMessages, setSchoolMessages] = useState<SchoolMessage[]>([]);
   const [schoolConversations, setSchoolConversations] = useState<SchoolChatConversation[]>([]);
   const [schoolTeachers, setSchoolTeachers] = useState<SchoolTeacher[]>([]);
+  const [allTeachers, setAllTeachers] = useState<SchoolTeacher[]>([]);
+  const [classes, setClasses] = useState<ClassRecord[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [classMembersById, setClassMembersById] = useState<Record<string, ClassMember[]>>({});
+  const [classPostsById, setClassPostsById] = useState<Record<string, ClassPost[]>>({});
+  const [classResourcesById, setClassResourcesById] = useState<Record<string, ResourceRecord[]>>({});
+  const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingResources, setLoadingResources] = useState(true);
   const [loadingCommunity, setLoadingCommunity] = useState(true);
   const [loadingSchoolChat, setLoadingSchoolChat] = useState(true);
@@ -89,6 +110,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isInviteTeachersOpen, setIsInviteTeachersOpen] = useState(false);
   const [isLessonPlannerOpen, setIsLessonPlannerOpen] = useState(false);
+  const [inviteClassId, setInviteClassId] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -199,6 +221,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
       setLoadingResources(false);
       setLoadingCommunity(false);
       setLoadingSchoolChat(false);
+      setLoadingClasses(false);
       return;
     }
 
@@ -239,6 +262,18 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
 
     if (activeProfile.schoolId) {
       setLoadingSchoolChat(true);
+      setLoadingClasses(true);
+      void getTeacherClasses(currentUserId, activeProfile.schoolId)
+        .then((nextClasses) => {
+          setClasses(nextClasses);
+          setSelectedClassId((current) => current ?? nextClasses[0]?.id ?? null);
+          setLoadingClasses(false);
+        })
+        .catch(() => {
+          setClasses([]);
+          setSelectedClassId(null);
+          setLoadingClasses(false);
+        });
       void getSchoolChatConversations(activeProfile.schoolId)
         .then((nextConversations) => {
           const merged = mergeConversations(nextConversations, loadStoredSchoolConversations());
@@ -251,6 +286,9 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
       void getSchoolTeachers(activeProfile.schoolId)
         .then((nextTeachers) => setSchoolTeachers(nextTeachers))
         .catch(() => setSchoolTeachers([]));
+      void getAllTeachers()
+        .then((nextTeachers) => setAllTeachers(nextTeachers))
+        .catch(() => setAllTeachers([]));
       unsubscribeSchoolMessages = getSchoolMessages(
         activeProfile.schoolId,
         (nextMessages) => {
@@ -264,10 +302,17 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
         },
       );
     } else {
+      setClasses([]);
+      setSelectedClassId(null);
+      setClassMembersById({});
+      setClassPostsById({});
+      setClassResourcesById({});
       setSchoolConversations([]);
       setSchoolTeachers([]);
+      setAllTeachers([]);
       setSchoolMessages([]);
       setLoadingSchoolChat(false);
+      setLoadingClasses(false);
     }
 
     return () => {
@@ -276,7 +321,27 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
       unsubscribePosts();
       unsubscribeComments();
     };
-  }, [activeProfile.schoolId, loadStoredSchoolConversations, mergeConversations, persistSchoolConversations]);
+  }, [activeProfile.schoolId, currentUserId, loadStoredSchoolConversations, mergeConversations, persistSchoolConversations]);
+
+  useEffect(() => {
+    if (!selectedClassId) {
+      return;
+    }
+
+    void Promise.all([
+      getClassMembers(selectedClassId),
+      getClassPosts(selectedClassId),
+      getClassResources(selectedClassId),
+    ])
+      .then(([members, postsForClass, resourcesForClass]) => {
+        setClassMembersById((current) => ({ ...current, [selectedClassId]: members }));
+        setClassPostsById((current) => ({ ...current, [selectedClassId]: postsForClass }));
+        setClassResourcesById((current) => ({ ...current, [selectedClassId]: resourcesForClass }));
+      })
+      .catch((error) => {
+        setWorkspaceError(toUserFacingError(error, "We couldn't load class details right now."));
+      });
+  }, [selectedClassId]);
 
   const filteredResources = useMemo(() => {
     return resources.filter((resource) => {
@@ -678,6 +743,115 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
     return createdConversation;
   }
 
+  async function handleCreateClass(input: {
+    name: string;
+    subject: string;
+    grade: string;
+    description: string;
+  }) {
+    if (!activeProfile.schoolId || !user) {
+      throw new Error("Your account is not linked to a school yet.");
+    }
+
+    await ensureCurrentUserProfileRecord();
+
+    const createdClass = await createClass({
+      teacherId: user.id,
+      schoolId: activeProfile.schoolId,
+      name: input.name,
+      subject: input.subject || activeProfile.subject || "General Studies",
+      grade: input.grade || activeProfile.grade || "Grade not set",
+      description: input.description,
+    });
+
+    setClasses((current) => [createdClass, ...current]);
+    setSelectedClassId(createdClass.id);
+    setWorkspaceSuccess("Class created.");
+  }
+
+  async function handleCreateClassPost(input: {
+    classId: string;
+    type: "announcement" | "discussion" | "assignment";
+    title: string;
+    content: string;
+  }) {
+    if (!user) {
+      throw new Error("Please sign in to post in a class.");
+    }
+
+    const createdPost = await createClassPost({
+      classId: input.classId,
+      authorId: user.id,
+      type: input.type,
+      title: input.title,
+      content: input.content,
+    });
+
+    setClassPostsById((current) => ({
+      ...current,
+      [input.classId]: [createdPost, ...(current[input.classId] ?? [])],
+    }));
+    setWorkspaceSuccess("Class update posted.");
+  }
+
+  async function handleAddResourceToClass(classId: string, resourceId: string) {
+    await addResourceToClass(classId, resourceId);
+    const linkedResource = resources.find((resource) => resource.id === resourceId);
+    if (linkedResource) {
+      setClassResourcesById((current) => ({
+        ...current,
+        [classId]: current[classId]?.some((item) => item.id === resourceId)
+          ? current[classId]
+          : [linkedResource, ...(current[classId] ?? [])],
+      }));
+    }
+    setWorkspaceSuccess("Resource added to class.");
+  }
+
+  async function handleRemoveStudentFromClass(classId: string, userId: string) {
+    await removeClassMember(classId, userId);
+    setClassMembersById((current) => ({
+      ...current,
+      [classId]: (current[classId] ?? []).filter((member) => member.userId !== userId),
+    }));
+    setClasses((current) =>
+      current.map((classItem) =>
+        classItem.id === classId
+          ? { ...classItem, studentCount: Math.max(0, classItem.studentCount - 1) }
+          : classItem,
+      ),
+    );
+    setWorkspaceSuccess("Student removed from class.");
+  }
+
+  function handleOpenClass(classId: string) {
+    setSelectedClassId(classId);
+    setActiveItem("classes");
+  }
+
+  function handleInviteStudents(classId: string) {
+    setSelectedClassId(classId);
+    setInviteClassId(classId);
+    setActiveItem("classes");
+  }
+
+  async function handleDeleteSchoolConversation(conversationId: string) {
+    const previousConversations = schoolConversations;
+    const previousMessages = schoolMessages;
+
+    setSchoolConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
+    setSchoolMessages((current) => current.filter((message) => message.room !== conversationId));
+
+    try {
+      await deleteSchoolChatConversation(conversationId);
+      setWorkspaceSuccess("Group deleted.");
+    } catch (error) {
+      setSchoolConversations(previousConversations);
+      setSchoolMessages(previousMessages);
+      setWorkspaceError(toUserFacingError(error, "Could not delete group."));
+    }
+  }
+
   async function handleTogglePostLike(post: DiscussionPost) {
     const previousPosts = posts;
     const nextLikes = post.likes.includes(currentUserId)
@@ -807,21 +981,42 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
           <DashboardOverview
             profile={activeProfile}
             currentUserId={currentUserId}
+            classes={classes}
             resources={filteredResources}
             myResources={myResources}
             posts={posts}
             comments={comments}
-            schoolMessages={schoolMessages}
             onOpenUpload={() => setIsUploadOpen(true)}
             onInviteTeachers={() => setIsInviteTeachersOpen(true)}
             onStartDiscussion={() => setActiveItem("community")}
             onExploreResources={() => setActiveItem("all")}
-            onOpenSchoolChat={() => setActiveItem("school-chat")}
-            onSendSchoolMessage={handleCreateSchoolMessage}
             onSelectResource={(resource) => {
               handleSelectResource(resource);
               setActiveItem("all");
             }}
+            onOpenMyClasses={() => setActiveItem("classes")}
+            onInviteStudents={handleInviteStudents}
+            onOpenClass={handleOpenClass}
+          />
+        );
+      case "classes":
+        return (
+          <ClassesWorkspace
+            profile={activeProfile}
+            classes={classes}
+            loading={loadingClasses}
+            selectedClassId={selectedClassId}
+            inviteClassId={inviteClassId}
+            classMembers={selectedClassId ? (classMembersById[selectedClassId] ?? []) : []}
+            classPosts={selectedClassId ? (classPostsById[selectedClassId] ?? []) : []}
+            classResources={selectedClassId ? (classResourcesById[selectedClassId] ?? []) : []}
+            myResources={myResources}
+            onSelectClass={setSelectedClassId}
+            onInviteClassChange={setInviteClassId}
+            onCreateClass={handleCreateClass}
+            onCreateClassPost={handleCreateClassPost}
+            onAddResourceToClass={handleAddResourceToClass}
+            onRemoveStudent={handleRemoveStudentFromClass}
           />
         );
       case "all":
@@ -883,7 +1078,8 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
           <SchoolChatPanel
             schoolName={profile.schoolName}
             conversations={schoolConversations}
-            teachers={schoolTeachers}
+            schoolTeachers={schoolTeachers}
+            teachers={allTeachers}
             messages={schoolMessages}
             loading={loadingSchoolChat}
             currentUserId={currentUserId}
@@ -891,6 +1087,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
             currentUserAvatar={activeProfile.avatar ?? null}
             onSendMessage={handleCreateSchoolMessage}
             onCreateConversation={handleCreateSchoolConversation}
+            onDeleteConversation={handleDeleteSchoolConversation}
           />
         );
       case "community":
