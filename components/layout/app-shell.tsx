@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, Plus, UserRound } from "lucide-react";
 
@@ -82,7 +83,16 @@ const defaultFilters: ResourceFilters = {
   grade: "",
 };
 
-export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveItem?: NavigationItemId }) {
+export function AppShell({
+  initialActiveItem = "dashboard",
+  initialClassId = null,
+  classViewMode = "overview",
+}: {
+  initialActiveItem?: NavigationItemId;
+  initialClassId?: string | null;
+  classViewMode?: "overview" | "detail";
+}) {
+  const router = useRouter();
   const { user, profile, logOut, saveProfile } = useAuth();
   const { isMobileOpen, setIsMobileOpen } = useSidebar();
   const [activeItem, setActiveItem] = useState<NavigationItemId>(initialActiveItem);
@@ -509,6 +519,10 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
   }, [initialActiveItem]);
 
   useEffect(() => {
+    setSelectedClassId(initialClassId);
+  }, [initialClassId]);
+
+  useEffect(() => {
     if (!workspaceSuccess && !workspaceError) {
       return;
     }
@@ -824,15 +838,47 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
     setWorkspaceSuccess("Student removed from class.");
   }
 
+  async function handleSidebarLogOut() {
+    if (!isAuthRequired || !user) {
+      return;
+    }
+
+    await logOut();
+  }
+
   function handleOpenClass(classId: string) {
     setSelectedClassId(classId);
+    setInviteClassId(null);
     setActiveItem("classes");
+    router.push(`/app/classes/${classId}`);
   }
 
   function handleInviteStudents(classId: string) {
     setSelectedClassId(classId);
     setInviteClassId(classId);
     setActiveItem("classes");
+    router.push(`/app/classes/${classId}`);
+  }
+
+  function handleBackToClasses() {
+    setInviteClassId(null);
+    setActiveItem("classes");
+    router.push("/app/classes");
+  }
+
+  function handleSidebarNavigate(id: NavigationItemId) {
+    if (id === "dashboard") {
+      setActiveItem("dashboard");
+      router.push("/app/dashboard");
+      return;
+    }
+
+    if (id === "classes") {
+      handleBackToClasses();
+      return;
+    }
+
+    setActiveItem(id);
   }
 
   async function handleDeleteSchoolConversation(conversationId: string) {
@@ -994,7 +1040,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
               handleSelectResource(resource);
               setActiveItem("all");
             }}
-            onOpenMyClasses={() => setActiveItem("classes")}
+            onOpenMyClasses={handleBackToClasses}
             onInviteStudents={handleInviteStudents}
             onOpenClass={handleOpenClass}
           />
@@ -1002,6 +1048,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
       case "classes":
         return (
           <ClassesWorkspace
+            mode={classViewMode}
             profile={activeProfile}
             classes={classes}
             loading={loadingClasses}
@@ -1012,6 +1059,8 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
             classResources={selectedClassId ? (classResourcesById[selectedClassId] ?? []) : []}
             myResources={myResources}
             onSelectClass={setSelectedClassId}
+            onOpenClass={handleOpenClass}
+            onBackToClasses={handleBackToClasses}
             onInviteClassChange={setInviteClassId}
             onCreateClass={handleCreateClass}
             onCreateClassPost={handleCreateClassPost}
@@ -1368,7 +1417,8 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
             schoolName={activeProfile.schoolName}
             isCollapsed={false}
             isMobileOpen={isMobileOpen}
-            onNavigate={setActiveItem}
+            onNavigate={handleSidebarNavigate}
+            onLogOut={() => void handleSidebarLogOut()}
             onToggleCollapse={() => undefined}
             onCloseMobile={() => setIsMobileOpen(false)}
           />

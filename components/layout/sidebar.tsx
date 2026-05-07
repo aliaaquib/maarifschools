@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, ChevronRight, PanelLeftClose, PanelLeftOpen, School2 } from "lucide-react";
+import { BookOpenText, LogOut, PanelLeftClose, PanelLeftOpen, School2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn, initials } from "@/lib/utils";
@@ -12,6 +12,7 @@ interface SidebarProps {
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onNavigate: (id: NavigationItemId) => void;
+  onLogOut: () => void;
   onToggleCollapse: () => void;
   onCloseMobile: () => void;
 }
@@ -55,11 +56,13 @@ function SidebarNav({
 function SidebarInner({
   activeItem,
   onNavigate,
+  onLogOut,
   schoolName,
   mobile,
 }: {
   activeItem: NavigationItemId;
   onNavigate: (id: NavigationItemId) => void;
+  onLogOut: () => void;
   schoolName?: string | null;
   mobile?: boolean;
 }) {
@@ -99,11 +102,12 @@ function SidebarInner({
           </p>
           <Button
             variant="outline"
-            className="mt-3 h-9 w-full justify-between border-[#E5E7EB] bg-white px-3 text-sm text-[#374151] hover:bg-[#F9FAFB]"
+            className="mt-3 h-9 w-full justify-between border-[#F3D1D8] bg-[#FFF5F7] px-3 text-sm font-medium text-[#BE123C] hover:bg-[#FFE4EA] hover:text-[#9F1239]"
             type="button"
+            onClick={onLogOut}
           >
-            Switch School
-            <ChevronRight className="h-4 w-4" />
+            Log out
+            <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -119,6 +123,7 @@ export function Sidebar(props: SidebarProps) {
           activeItem={props.activeItem}
           schoolName={props.schoolName}
           onNavigate={props.onNavigate}
+          onLogOut={props.onLogOut}
         />
       </aside>
 
@@ -141,6 +146,10 @@ export function Sidebar(props: SidebarProps) {
           schoolName={props.schoolName}
           onNavigate={(id) => {
             props.onNavigate(id);
+            props.onCloseMobile();
+          }}
+          onLogOut={() => {
+            props.onLogOut();
             props.onCloseMobile();
           }}
           mobile
