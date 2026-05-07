@@ -1,7 +1,8 @@
 export type ResourceType = "pdf" | "ppt" | "docx" | "image" | "link" | "other";
 export type ResourceScope = "common" | "school";
-export type SchoolChatRoom = "general" | "grade-3" | "science";
+export type SchoolChatRoom = string;
 export type SchoolChatAttachmentType = "image" | "file" | "link";
+export type SchoolChatConversationType = "group" | "direct";
 
 export interface UserProfile {
   uid: string;
@@ -35,6 +36,25 @@ export interface SchoolMessage {
   attachmentType?: SchoolChatAttachmentType | null;
   attachmentSize?: number | null;
   createdAt: string;
+}
+
+export interface SchoolChatConversation {
+  id: string;
+  schoolId: string;
+  name: string;
+  type: SchoolChatConversationType;
+  memberIds: string[];
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface SchoolTeacher {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  email: string;
+  subject?: string;
+  grade?: string;
 }
 
 export interface ResourceRecord {

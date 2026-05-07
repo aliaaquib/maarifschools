@@ -1,4 +1,4 @@
-import { SchoolChatRoom } from "@/types";
+import { SchoolChatConversation, SchoolChatRoom } from "@/types";
 
 import {
   BookMarked,
@@ -36,29 +36,33 @@ export const GRADE_OPTIONS = [
   "Grade 12",
 ];
 
-export const SCHOOL_CHAT_ROOMS: Array<{
+export const DEFAULT_SCHOOL_CHAT_ROOMS: Array<{
   id: SchoolChatRoom;
   name: string;
   fallbackPreview: string;
   tone: string;
+  type: SchoolChatConversation["type"];
 }> = [
   {
     id: "general",
     name: "General Chat",
     fallbackPreview: "Good morning everyone!",
     tone: "bg-[#EEF2FF] text-[#4F46E5]",
+    type: "group",
   },
   {
     id: "grade-3",
     name: "Grade 3 Teachers",
     fallbackPreview: "I shared a new worksheet",
     tone: "bg-[#FEE2E2] text-[#DC2626]",
+    type: "group",
   },
   {
     id: "science",
     name: "Science Department",
     fallbackPreview: "Check out this experiment",
     tone: "bg-[#DCFCE7] text-[#16A34A]",
+    type: "group",
   },
 ] as const;
 

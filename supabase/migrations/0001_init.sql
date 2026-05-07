@@ -72,6 +72,16 @@ create table if not exists public.school_messages (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists public.school_chat_rooms (
+  id text primary key,
+  school_id uuid references public.schools(id) on delete cascade,
+  name text not null,
+  type text not null default 'group' check (type in ('group', 'direct')),
+  member_ids uuid[] not null default '{}',
+  created_by uuid references public.users(id) on delete set null,
+  created_at timestamp with time zone default now()
+);
+
 alter table public.users
   drop constraint if exists users_school_id_fkey;
 
@@ -96,6 +106,7 @@ create index if not exists resources_resource_scope_idx on public.resources (res
 create index if not exists school_messages_school_id_idx on public.school_messages (school_id);
 create index if not exists school_messages_room_idx on public.school_messages (school_id, room, created_at);
 create index if not exists school_messages_parent_id_idx on public.school_messages (parent_id);
+create index if not exists school_chat_rooms_school_id_idx on public.school_chat_rooms (school_id, created_at);
 
 alter table public.users enable row level security;
 alter table public.schools enable row level security;
@@ -104,6 +115,7 @@ alter table public.comments enable row level security;
 alter table public.resources enable row level security;
 alter table public.resource_versions enable row level security;
 alter table public.school_messages enable row level security;
+alter table public.school_chat_rooms enable row level security;
 
 drop policy if exists "users_dev_all" on public.users;
 create policy "users_dev_all"
@@ -160,6 +172,13 @@ for all
 using (true)
 with check (true);
 
+drop policy if exists "school_chat_rooms_dev_all" on public.school_chat_rooms;
+create policy "school_chat_rooms_dev_all"
+on public.school_chat_rooms
+for all
+using (true)
+with check (true);
+
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.users to anon, authenticated;
 grant select, insert, update, delete on public.schools to anon, authenticated;
@@ -168,6 +187,7 @@ grant select, insert, update, delete on public.comments to anon, authenticated;
 grant select, insert, update, delete on public.resources to anon, authenticated;
 grant select, insert, update, delete on public.resource_versions to anon, authenticated;
 grant select, insert, update, delete on public.school_messages to anon, authenticated;
+grant select, insert, update, delete on public.school_chat_rooms to anon, authenticated;
 
 insert into storage.buckets (id, name, public)
 values ('resources', 'resources', true)

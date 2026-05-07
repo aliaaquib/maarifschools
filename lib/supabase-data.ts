@@ -1,7 +1,18 @@
 import { RealtimeChannel } from "@supabase/supabase-js";
 
-import { CreateResourceInput, DiscussionComment, DiscussionPost, ResourceRecord, SchoolMessage, SchoolRecord, UserProfile } from "@/types";
+import {
+  CreateResourceInput,
+  DiscussionComment,
+  DiscussionPost,
+  ResourceRecord,
+  SchoolChatConversation,
+  SchoolMessage,
+  SchoolRecord,
+  SchoolTeacher,
+  UserProfile,
+} from "@/types";
 import { GUEST_USER_ID, supabase } from "@/lib/supabase";
+import { DEFAULT_SCHOOL_CHAT_ROOMS } from "@/lib/constants";
 
 type Row = Record<string, unknown>;
 
@@ -45,6 +56,31 @@ function normalizeSchool(raw: Row): SchoolRecord {
     id: String(raw.id ?? ""),
     name: String(raw.name ?? ""),
     createdAt: toIsoDate(raw.created_at),
+  };
+}
+
+function normalizeSchoolConversation(raw: Row): SchoolChatConversation {
+  return {
+    id: String(raw.id ?? ""),
+    schoolId: String(raw.school_id ?? ""),
+    name: String(raw.name ?? "Conversation"),
+    type: raw.type === "direct" ? "direct" : "group",
+    memberIds: Array.isArray(raw.member_ids)
+      ? raw.member_ids.filter((value): value is string => typeof value === "string")
+      : [],
+    createdBy: raw.created_by ? String(raw.created_by) : null,
+    createdAt: toIsoDate(raw.created_at),
+  };
+}
+
+function normalizeTeacher(raw: Row): SchoolTeacher {
+  return {
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? "Teacher"),
+    avatar: raw.avatar ? String(raw.avatar) : null,
+    email: String(raw.email ?? ""),
+    subject: String(raw.subject ?? ""),
+    grade: String(raw.grade ?? ""),
   };
 }
 
@@ -228,6 +264,95 @@ export async function getSchools() {
   }
 
   return (data ?? []).map((row) => normalizeSchool(row as Row));
+}
+
+export async function getSchoolTeachers(schoolId: string) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, name, avatar, email, subject, grade")
+    .eq("school_id", schoolId)
+    .order("name", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => normalizeTeacher(row as Row));
+}
+
+export async function getSchoolChatConversations(schoolId: string) {
+  const { data, error } = await supabase
+    .from("school_chat_rooms")
+    .select("id, school_id, name, type, member_ids, created_by, created_at")
+    .eq("school_id", schoolId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    const fallback = DEFAULT_SCHOOL_CHAT_ROOMS.map((room) => ({
+      id: room.id,
+      schoolId,
+      name: room.name,
+      type: room.type,
+      memberIds: [],
+      createdBy: null,
+      createdAt: new Date().toISOString(),
+    }));
+
+    return fallback;
+  }
+
+  const conversations = (data ?? []).map((row) => normalizeSchoolConversation(row as Row));
+  const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
+
+  for (const room of DEFAULT_SCHOOL_CHAT_ROOMS) {
+    if (!byId.has(room.id)) {
+      conversations.unshift({
+        id: room.id,
+        schoolId,
+        name: room.name,
+        type: room.type,
+        memberIds: [],
+        createdBy: null,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  return conversations;
+}
+
+export async function createSchoolChatConversation(input: {
+  schoolId: string;
+  name: string;
+  type: SchoolChatConversation["type"];
+  memberIds: string[];
+  createdBy: string;
+}) {
+  const conversationId =
+    input.type === "direct"
+      ? `direct-${[...new Set(input.memberIds)].sort().join("-")}`
+      : `group-${crypto.randomUUID()}`;
+
+  const payload = {
+    id: conversationId,
+    school_id: input.schoolId,
+    name: input.name,
+    type: input.type,
+    member_ids: [...new Set(input.memberIds)],
+    created_by: input.createdBy,
+  };
+
+  const { data, error } = await supabase
+    .from("school_chat_rooms")
+    .upsert(payload, { onConflict: "id" })
+    .select("id, school_id, name, type, member_ids, created_by, created_at")
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return normalizeSchoolConversation(data as Row);
 }
 
 async function getSchoolNameById(schoolId: string | null | undefined) {

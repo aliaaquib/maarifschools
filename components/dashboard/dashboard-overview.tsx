@@ -7,7 +7,7 @@ import { ArrowRight, BookOpen, ChevronLeft, Flame, FolderOpen, MessageCircle, Me
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { SCHOOL_CHAT_ROOMS } from "@/lib/constants";
+import { DEFAULT_SCHOOL_CHAT_ROOMS } from "@/lib/constants";
 import { toUserFacingError } from "@/lib/errors";
 import { ResourceRecord, DiscussionPost, DiscussionComment, SchoolMessage, UserProfile } from "@/types";
 import { formatRelativeDate, initials } from "@/lib/utils";
@@ -85,7 +85,7 @@ export function DashboardOverview({
     return created.toDateString() === now.toDateString();
   }).length;
   const highlightedPost = posts[0] ?? null;
-  const chatGroups = SCHOOL_CHAT_ROOMS.map((room) => {
+  const chatGroups = DEFAULT_SCHOOL_CHAT_ROOMS.map((room) => {
     const roomMessages = schoolMessages.filter((message) => message.room === room.id);
     const latestMessage = roomMessages[roomMessages.length - 1] ?? null;
 
@@ -100,7 +100,7 @@ export function DashboardOverview({
   });
 
   const activeMiniChatMeta =
-    SCHOOL_CHAT_ROOMS.find((room) => room.id === activeMiniChatRoom) ?? SCHOOL_CHAT_ROOMS[0];
+    DEFAULT_SCHOOL_CHAT_ROOMS.find((room) => room.id === activeMiniChatRoom) ?? DEFAULT_SCHOOL_CHAT_ROOMS[0];
   const activeMiniChatMessages = schoolMessages.filter((message) => message.room === activeMiniChatRoom);
 
   async function handleMiniChatSubmit(event: FormEvent<HTMLFormElement>) {
@@ -331,7 +331,7 @@ export function DashboardOverview({
 
               <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
                 <div className="mb-3 flex flex-wrap gap-2">
-                  {SCHOOL_CHAT_ROOMS.map((room) => (
+                  {DEFAULT_SCHOOL_CHAT_ROOMS.map((room) => (
                     <button
                       key={room.id}
                       type="button"

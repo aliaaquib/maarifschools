@@ -26,12 +26,15 @@ import { toUserFacingError } from "@/lib/errors";
 import {
   createComment,
   createPost,
+  createSchoolChatConversation,
   createSchoolMessage,
   deleteComment,
   deletePost,
   deleteResource,
   ensureUserProfile,
   getComments,
+  getSchoolChatConversations,
+  getSchoolTeachers,
   getVisibleResources,
   getUserProfile,
   getSchoolMessages,
@@ -54,7 +57,9 @@ import {
   NotificationItem,
   ResourceFilters,
   ResourceRecord,
+  SchoolChatConversation,
   SchoolMessage,
+  SchoolTeacher,
 } from "@/types";
 
 const defaultFilters: ResourceFilters = {
@@ -72,6 +77,8 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
   const [posts, setPosts] = useState<DiscussionPost[]>([]);
   const [comments, setComments] = useState<DiscussionComment[]>([]);
   const [schoolMessages, setSchoolMessages] = useState<SchoolMessage[]>([]);
+  const [schoolConversations, setSchoolConversations] = useState<SchoolChatConversation[]>([]);
+  const [schoolTeachers, setSchoolTeachers] = useState<SchoolTeacher[]>([]);
   const [loadingResources, setLoadingResources] = useState(true);
   const [loadingCommunity, setLoadingCommunity] = useState(true);
   const [loadingSchoolChat, setLoadingSchoolChat] = useState(true);
@@ -129,6 +136,54 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
   }, [profile, user]);
 
   const currentUserId = user?.id ?? activeProfile.uid;
+  const schoolConversationStorageKey = useMemo(
+    () => (activeProfile.schoolId ? `teachshare-school-conversations:${activeProfile.schoolId}` : ""),
+    [activeProfile.schoolId],
+  );
+
+  const mergeConversations = useCallback((primary: SchoolChatConversation[], secondary: SchoolChatConversation[]) => {
+    const merged = [...primary];
+    const existingIds = new Set(primary.map((conversation) => conversation.id));
+
+    for (const conversation of secondary) {
+      if (!existingIds.has(conversation.id)) {
+        merged.push(conversation);
+      }
+    }
+
+    return merged;
+  }, []);
+
+  const loadStoredSchoolConversations = useCallback(() => {
+    if (typeof window === "undefined" || !schoolConversationStorageKey) {
+      return [] as SchoolChatConversation[];
+    }
+
+    try {
+      const raw = window.localStorage.getItem(schoolConversationStorageKey);
+      if (!raw) {
+        return [];
+      }
+
+      return JSON.parse(raw) as SchoolChatConversation[];
+    } catch {
+      return [];
+    }
+  }, [schoolConversationStorageKey]);
+
+  const persistSchoolConversations = useCallback(
+    (conversations: SchoolChatConversation[]) => {
+      if (typeof window === "undefined" || !schoolConversationStorageKey) {
+        return;
+      }
+
+      const customOnly = conversations.filter(
+        (conversation) => !["general", "grade-3", "science"].includes(conversation.id),
+      );
+      window.localStorage.setItem(schoolConversationStorageKey, JSON.stringify(customOnly));
+    },
+    [schoolConversationStorageKey],
+  );
 
   useEffect(() => {
     setProfileForm({
@@ -184,6 +239,18 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
 
     if (activeProfile.schoolId) {
       setLoadingSchoolChat(true);
+      void getSchoolChatConversations(activeProfile.schoolId)
+        .then((nextConversations) => {
+          const merged = mergeConversations(nextConversations, loadStoredSchoolConversations());
+          setSchoolConversations(merged);
+          persistSchoolConversations(merged);
+        })
+        .catch(() => {
+          setSchoolConversations(loadStoredSchoolConversations());
+        });
+      void getSchoolTeachers(activeProfile.schoolId)
+        .then((nextTeachers) => setSchoolTeachers(nextTeachers))
+        .catch(() => setSchoolTeachers([]));
       unsubscribeSchoolMessages = getSchoolMessages(
         activeProfile.schoolId,
         (nextMessages) => {
@@ -197,6 +264,8 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
         },
       );
     } else {
+      setSchoolConversations([]);
+      setSchoolTeachers([]);
       setSchoolMessages([]);
       setLoadingSchoolChat(false);
     }
@@ -207,7 +276,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
       unsubscribePosts();
       unsubscribeComments();
     };
-  }, [activeProfile.schoolId]);
+  }, [activeProfile.schoolId, loadStoredSchoolConversations, mergeConversations, persistSchoolConversations]);
 
   const filteredResources = useMemo(() => {
     return resources.filter((resource) => {
@@ -568,6 +637,47 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
     setWorkspaceSuccess("Message sent.");
   }
 
+  async function handleCreateSchoolConversation(input: {
+    name: string;
+    type: SchoolChatConversation["type"];
+    memberIds: string[];
+  }) {
+    if (!activeProfile.schoolId || !user) {
+      throw new Error("Your account is not linked to a school yet.");
+    }
+
+    await ensureCurrentUserProfileRecord();
+
+    const createdConversation = await createSchoolChatConversation({
+      schoolId: activeProfile.schoolId,
+      name: input.name,
+      type: input.type,
+      memberIds: Array.from(new Set([user.id, ...input.memberIds])),
+      createdBy: user.id,
+    }).catch(() => ({
+      id:
+        input.type === "direct"
+          ? `direct-${[user.id, ...input.memberIds].sort().join("-")}`
+          : `group-local-${Date.now()}`,
+      schoolId: activeProfile.schoolId!,
+      name: input.name,
+      type: input.type,
+      memberIds: Array.from(new Set([user.id, ...input.memberIds])),
+      createdBy: user.id,
+      createdAt: new Date().toISOString(),
+    }));
+
+    setSchoolConversations((current) => {
+      const next = current.some((conversation) => conversation.id === createdConversation.id)
+        ? current
+        : [createdConversation, ...current];
+      persistSchoolConversations(next);
+      return next;
+    });
+    setWorkspaceSuccess(input.type === "direct" ? "Direct chat started." : "Chat group created.");
+    return createdConversation;
+  }
+
   async function handleTogglePostLike(post: DiscussionPost) {
     const previousPosts = posts;
     const nextLikes = post.likes.includes(currentUserId)
@@ -772,12 +882,15 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
         return (
           <SchoolChatPanel
             schoolName={profile.schoolName}
+            conversations={schoolConversations}
+            teachers={schoolTeachers}
             messages={schoolMessages}
             loading={loadingSchoolChat}
             currentUserId={currentUserId}
             currentUserName={activeProfile.name}
             currentUserAvatar={activeProfile.avatar ?? null}
             onSendMessage={handleCreateSchoolMessage}
+            onCreateConversation={handleCreateSchoolConversation}
           />
         );
       case "community":

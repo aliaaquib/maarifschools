@@ -1,8 +1,9 @@
 "use client";
 
-import { ChangeEvent, FormEvent, KeyboardEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
+  Check,
   CornerUpLeft,
   Download,
   ExternalLink,
@@ -10,9 +11,11 @@ import {
   Filter,
   Images,
   Link2,
+  Link as LinkIcon,
   MessageSquareMore,
   Mic,
   MoreHorizontal,
+  Image as ImageIcon,
   Paperclip,
   Presentation,
   Pin,
@@ -20,27 +23,33 @@ import {
   SearchX,
   Search,
   Send,
+  Settings2,
   SmilePlus,
   Smile,
   Users,
+  UserRound,
   FileArchive,
   File,
   X,
+  ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { SCHOOL_CHAT_ROOMS } from "@/lib/constants";
+import { DEFAULT_SCHOOL_CHAT_ROOMS } from "@/lib/constants";
 import { toUserFacingError } from "@/lib/errors";
-import { SchoolMessage } from "@/types";
+import { SchoolChatConversation, SchoolMessage, SchoolTeacher } from "@/types";
 import { formatRelativeDate, initials } from "@/lib/utils";
 
 type ChatListFilter = "all" | "unread" | "groups" | "direct";
+type GroupInfoTab = "members" | "media" | "files" | "links" | "pinned";
 
 interface SchoolChatPanelProps {
   schoolName?: string | null;
+  conversations: SchoolChatConversation[];
+  teachers: SchoolTeacher[];
   messages: SchoolMessage[];
   loading: boolean;
   currentUserId: string;
@@ -52,13 +61,12 @@ interface SchoolChatPanelProps {
     parentId?: string | null;
     file?: File | null;
   }) => Promise<void>;
+  onCreateConversation: (input: {
+    name: string;
+    type: SchoolChatConversation["type"];
+    memberIds: string[];
+  }) => Promise<SchoolChatConversation>;
 }
-
-const ROOM_DESCRIPTIONS: Record<SchoolMessage["room"], string> = {
-  general: "Whole-school announcements, coordination, and day-to-day communication.",
-  "grade-3": "Planning, worksheets, and class updates for Grade 3 teachers.",
-  science: "Experiments, lab ideas, and science department collaboration.",
-};
 
 const EMOJI_REACTIONS = [
   "👍",
@@ -348,14 +356,56 @@ function AttachmentCard({
   );
 }
 
+function getConversationTone(conversation: SchoolChatConversation, index: number) {
+  const preset = DEFAULT_SCHOOL_CHAT_ROOMS.find((room) => room.id === conversation.id);
+  if (preset) {
+    return preset.tone;
+  }
+
+  if (conversation.type === "direct") {
+    return "bg-[#EFF6FF] text-[#2563EB]";
+  }
+
+  const tones = [
+    "bg-[#F5F3FF] text-[#6D28D9]",
+    "bg-[#FFF7ED] text-[#EA580C]",
+    "bg-[#ECFDF5] text-[#16A34A]",
+    "bg-[#FEE2E2] text-[#DC2626]",
+  ];
+
+  return tones[index % tones.length];
+}
+
+function getConversationDescription(conversation: SchoolChatConversation) {
+  const preset = DEFAULT_SCHOOL_CHAT_ROOMS.find((room) => room.id === conversation.id);
+  if (preset) {
+    if (conversation.id === "general") {
+      return "Whole-school announcements, coordination, and day-to-day communication.";
+    }
+    if (conversation.id === "grade-3") {
+      return "Planning, worksheets, and class updates for Grade 3 teachers.";
+    }
+    if (conversation.id === "science") {
+      return "Experiments, lab ideas, and science department collaboration.";
+    }
+  }
+
+  return conversation.type === "direct"
+    ? "Private teacher-to-teacher conversation."
+    : "Custom school conversation for focused collaboration.";
+}
+
 export function SchoolChatPanel({
   schoolName,
+  conversations,
+  teachers,
   messages,
   loading,
   currentUserId,
   currentUserName,
   currentUserAvatar,
   onSendMessage,
+  onCreateConversation,
 }: SchoolChatPanelProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -364,29 +414,79 @@ export function SchoolChatPanel({
   const [activeRoom, setActiveRoom] = useState<SchoolMessage["room"]>("general");
   const [activeFilter, setActiveFilter] = useState<ChatListFilter>("all");
   const [showPinnedMessage, setShowPinnedMessage] = useState(true);
+  const [isCreateConversationOpen, setIsCreateConversationOpen] = useState(false);
+  const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false);
+  const [headerSearchQuery, setHeaderSearchQuery] = useState("");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
+  const [infoPanelTab, setInfoPanelTab] = useState<GroupInfoTab>("members");
+  const [conversationType, setConversationType] = useState<SchoolChatConversation["type"]>("group");
+  const [conversationName, setConversationName] = useState("");
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([]);
+  const [creatingConversation, setCreatingConversation] = useState(false);
   const [openReactionPickerFor, setOpenReactionPickerFor] = useState<string | null>(null);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
+  const [lastSeenByConversation, setLastSeenByConversation] = useState<Record<string, string>>({});
   const [messageReactions, setMessageReactions] = useState<
     Record<string, Array<{ emoji: string; userIds: string[] }>>
   >({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const headerSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const unreadStorageKey = `teachshare-school-chat-seen:${currentUserId}:${schoolName ?? "school"}`;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const stored = window.localStorage.getItem(unreadStorageKey);
+    if (!stored) {
+      setLastSeenByConversation({});
+      return;
+    }
+
+    try {
+      setLastSeenByConversation(JSON.parse(stored) as Record<string, string>);
+    } catch {
+      setLastSeenByConversation({});
+    }
+  }, [unreadStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(unreadStorageKey, JSON.stringify(lastSeenByConversation));
+  }, [lastSeenByConversation, unreadStorageKey]);
 
   const roomSummaries = useMemo(() => {
-    return SCHOOL_CHAT_ROOMS.map((room) => {
-      const roomMessages = messages.filter((message) => message.room === room.id);
+    return conversations.map((conversation, index) => {
+      const roomMessages = messages.filter((message) => message.room === conversation.id);
       const latestMessage = roomMessages[roomMessages.length - 1] ?? null;
-      const latestByOtherTeacher = latestMessage ? latestMessage.userId !== currentUserId : false;
+      const seenAt = lastSeenByConversation[conversation.id];
+      const unreadCount = roomMessages.filter(
+        (message) =>
+          message.userId !== currentUserId &&
+          (!seenAt || new Date(message.createdAt).getTime() > new Date(seenAt).getTime()),
+      ).length;
 
       return {
-        ...room,
+        ...conversation,
+        tone: getConversationTone(conversation, index),
+        fallbackPreview:
+          DEFAULT_SCHOOL_CHAT_ROOMS.find((room) => room.id === conversation.id)?.fallbackPreview ??
+          (conversation.type === "direct" ? "Start a private conversation" : "Start the group conversation"),
         latestMessage,
-        unreadCount: latestByOtherTeacher ? 1 : 0,
-        members: Array.from(new Set(roomMessages.map((message) => message.userId))).length,
+        unreadCount,
+        members: conversation.memberIds.length || Array.from(new Set(roomMessages.map((message) => message.userId))).length,
       };
     });
-  }, [currentUserId, messages]);
+  }, [conversations, currentUserId, lastSeenByConversation, messages]);
 
   const filteredRooms = useMemo(() => {
     const query = chatSearch.trim().toLowerCase();
@@ -401,8 +501,8 @@ export function SchoolChatPanel({
       const matchesFilter =
         activeFilter === "all" ||
         (activeFilter === "unread" && room.unreadCount > 0) ||
-        (activeFilter === "groups" && true) ||
-        (activeFilter === "direct" && false);
+        (activeFilter === "groups" && room.type === "group") ||
+        (activeFilter === "direct" && room.type === "direct");
 
       return matchesSearch && matchesFilter;
     });
@@ -418,6 +518,66 @@ export function SchoolChatPanel({
     [activeRoomMessages],
   );
   const replyingToMessage = replyingToId ? messagesById.get(replyingToId) ?? null : null;
+
+  useEffect(() => {
+    if (!activeRoomMeta && roomSummaries.length > 0) {
+      setActiveRoom(roomSummaries[0].id);
+    }
+  }, [activeRoomMeta, roomSummaries]);
+
+  useEffect(() => {
+    if (!activeRoomMeta?.id || !activeRoomMessages.length) {
+      return;
+    }
+
+    const latestVisibleMessage = activeRoomMessages[activeRoomMessages.length - 1];
+    setLastSeenByConversation((current) => {
+      if (current[activeRoomMeta.id] === latestVisibleMessage.createdAt) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [activeRoomMeta.id]: latestVisibleMessage.createdAt,
+      };
+    });
+  }, [activeRoomMessages, activeRoomMeta?.id]);
+
+  useEffect(() => {
+    if (!isHeaderSearchOpen) {
+      return;
+    }
+
+    headerSearchInputRef.current?.focus();
+  }, [isHeaderSearchOpen]);
+
+  useEffect(() => {
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      setIsHeaderSearchOpen(false);
+      setHeaderSearchQuery("");
+      setIsMenuOpen(false);
+      setIsInfoPanelOpen(false);
+      setIsCreateConversationOpen(false);
+      setOpenReactionPickerFor(null);
+    };
+
+    const handleOutside = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("mousedown", handleOutside);
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("mousedown", handleOutside);
+    };
+  }, []);
 
   const groupedMessages = useMemo(() => {
     const groups: Array<{ label: string; items: SchoolMessage[] }> = [];
@@ -435,6 +595,11 @@ export function SchoolChatPanel({
 
     return groups;
   }, [activeRoomMessages]);
+
+  const teacherMap = useMemo(
+    () => new Map(teachers.map((teacher) => [teacher.id, teacher])),
+    [teachers],
+  );
 
   const activeMembers = useMemo(() => {
     const memberMap = new Map<
@@ -458,6 +623,19 @@ export function SchoolChatPanel({
       });
     }
 
+    activeRoomMeta?.memberIds.forEach((memberId) => {
+      const teacher = teacherMap.get(memberId);
+      if (teacher && !memberMap.has(memberId)) {
+        memberMap.set(memberId, {
+          id: memberId,
+          name: memberId === currentUserId ? currentUserName || "You" : teacher.name,
+          avatar: memberId === currentUserId ? currentUserAvatar ?? teacher.avatar ?? null : teacher.avatar ?? null,
+          role: "Teacher",
+          status: memberId === currentUserId ? "Active now" : "Available",
+        });
+      }
+    });
+
     activeRoomMessages.forEach((message) => {
       if (!memberMap.has(message.userId)) {
         memberMap.set(message.userId, {
@@ -474,7 +652,7 @@ export function SchoolChatPanel({
     });
 
     return Array.from(memberMap.values());
-  }, [activeRoomMessages, currentUserAvatar, currentUserId, currentUserName]);
+  }, [activeRoomMessages, activeRoomMeta?.memberIds, currentUserAvatar, currentUserId, currentUserName, teacherMap]);
 
   const roomStats = useMemo(() => {
     const links = activeRoomMessages.filter(
@@ -498,6 +676,73 @@ export function SchoolChatPanel({
       pinned: showPinnedMessage ? 1 : 0,
     };
   }, [activeRoomMessages, showPinnedMessage]);
+
+  const sharedItems = useMemo(() => {
+    return activeRoomMessages
+      .map((message) => ({
+        message,
+        attachment: renderAttachmentPreview(message),
+      }))
+      .filter((item) => item.attachment);
+  }, [activeRoomMessages]);
+
+  const sharedMedia = useMemo(
+    () => sharedItems.filter((item) => item.attachment?.kind === "image"),
+    [sharedItems],
+  );
+  const sharedFiles = useMemo(
+    () => sharedItems.filter((item) => item.attachment && item.attachment.kind !== "image" && item.attachment.kind !== "link"),
+    [sharedItems],
+  );
+  const sharedLinks = useMemo(
+    () => sharedItems.filter((item) => item.attachment?.kind === "link"),
+    [sharedItems],
+  );
+
+  const pinnedMessages = useMemo(() => activeRoomMessages.slice(0, showPinnedMessage ? 1 : 0), [activeRoomMessages, showPinnedMessage]);
+
+  const searchResults = useMemo(() => {
+    const query = headerSearchQuery.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+
+    return activeRoomMessages.filter((message) => {
+      const teacher = teacherMap.get(message.userId);
+      const attachment = renderAttachmentPreview(message);
+      return [
+        message.content,
+        message.userName,
+        teacher?.name ?? "",
+        teacher?.subject ?? "",
+        attachment?.label ?? "",
+        attachment?.href ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [activeRoomMessages, headerSearchQuery, teacherMap]);
+
+  function highlightMatch(text: string, query: string) {
+    if (!query.trim()) {
+      return text;
+    }
+
+    const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(${safeQuery})`, "ig");
+    const parts = text.split(pattern);
+
+    return parts.map((part, index) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark key={`${part}-${index}`} className="rounded bg-[#E9D5FF] px-0.5 text-[#5B21B6]">
+          {part}
+        </mark>
+      ) : (
+        <span key={`${part}-${index}`}>{part}</span>
+      ),
+    );
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -543,6 +788,105 @@ export function SchoolChatPanel({
     setSelectedFile(event.target.files?.[0] ?? null);
   }
 
+  function openInfoPanel(tab: GroupInfoTab) {
+    setInfoPanelTab(tab);
+    setIsInfoPanelOpen(true);
+    setIsMenuOpen(false);
+  }
+
+  function scrollToMessage(messageId: string) {
+    const node = messageRefs.current[messageId];
+    if (!node) {
+      return;
+    }
+
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    node.classList.add("ring-2", "ring-[#C4B5FD]");
+    window.setTimeout(() => {
+      node.classList.remove("ring-2", "ring-[#C4B5FD]");
+    }, 1800);
+  }
+
+  function handleSelectRoom(roomId: string) {
+    setActiveRoom(roomId);
+    const latestMessage = messages.filter((message) => message.room === roomId).at(-1);
+    if (!latestMessage) {
+      return;
+    }
+
+    setLastSeenByConversation((current) => ({
+      ...current,
+      [roomId]: latestMessage.createdAt,
+    }));
+  }
+
+  async function handleCreateConversationSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const memberIds = Array.from(new Set(selectedTeacherIds.filter(Boolean)));
+    const trimmedName = conversationName.trim();
+    const resolvedName =
+      conversationType === "direct"
+        ? teachers.find((teacher) => teacher.id === memberIds[0])?.name ?? "Direct chat"
+        : trimmedName;
+
+    if ((conversationType === "group" && !resolvedName) || memberIds.length === 0) {
+      setError("Choose teachers and complete the conversation details.");
+      return;
+    }
+
+    setCreatingConversation(true);
+    setError("");
+
+    try {
+      const createdConversation = await onCreateConversation({
+        name: resolvedName,
+        type: conversationType,
+        memberIds,
+      });
+
+      setConversationName("");
+      setSelectedTeacherIds([]);
+      setIsCreateConversationOpen(false);
+      handleSelectRoom(createdConversation.id);
+    } catch (conversationError) {
+      setError(toUserFacingError(conversationError, "Could not create conversation."));
+    } finally {
+      setCreatingConversation(false);
+    }
+  }
+
+  const availableTeachers = useMemo(
+    () => teachers.filter((teacher) => teacher.id !== currentUserId),
+    [currentUserId, teachers],
+  );
+
+  function renderInfoList(items: Array<{ icon: React.ComponentType<{ className?: string }>; label: string; value: string; onClick: () => void }>) {
+    return (
+      <div className="space-y-3">
+        {items.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={item.onClick}
+            className="flex w-full items-center justify-between rounded-2xl border border-[#F3F4F6] px-4 py-3 text-left transition hover:bg-[#FAFAFA]"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F9FAFB] text-[#6B7280]">
+                <item.icon className="h-4 w-4" />
+              </div>
+              <span className="text-sm text-[#111827]">{item.label}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-[#6B7280]">{item.value}</span>
+              <ChevronRight className="h-4 w-4 text-[#9CA3AF]" />
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   function toggleReaction(messageId: string, emoji: string) {
     setMessageReactions((current) => {
       const currentReactions = current[messageId] ?? [];
@@ -576,7 +920,7 @@ export function SchoolChatPanel({
 
   return (
     <div className="h-full overflow-hidden rounded-[24px] border border-[#E5E7EB] bg-white">
-      <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_320px]">
+      <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="min-h-0 border-r border-[#E5E7EB] bg-white">
           <div className="border-b border-[#E5E7EB] px-5 py-5">
             <div className="flex items-center justify-between">
@@ -588,7 +932,11 @@ export function SchoolChatPanel({
                 <button className="rounded-xl p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]">
                   <Filter className="h-4 w-4" />
                 </button>
-                <button className="rounded-xl p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateConversationOpen(true)}
+                  className="rounded-xl p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]"
+                >
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
@@ -636,7 +984,7 @@ export function SchoolChatPanel({
                   <button
                     key={room.id}
                     type="button"
-                    onClick={() => setActiveRoom(room.id)}
+                    onClick={() => handleSelectRoom(room.id)}
                     className={`mb-2 flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition ${
                       isActive ? "bg-[#F5F3FF]" : "hover:bg-[#F9FAFB]"
                     }`}
@@ -656,10 +1004,16 @@ export function SchoolChatPanel({
                       <p className="mt-1 line-clamp-2 text-sm text-[#6B7280]">
                         {room.latestMessage?.content || room.fallbackPreview}
                       </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="rounded-full bg-[#F3F4F6] px-2 py-0.5 text-[11px] font-medium text-[#6B7280]">
+                          {room.type === "direct" ? "Direct" : "Group"}
+                        </span>
+                        <span className="text-[11px] text-[#9CA3AF]">{room.members} members</span>
+                      </div>
                     </div>
                     {room.unreadCount > 0 ? (
                       <div className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#6D28D9] px-1 text-[10px] font-semibold text-white">
-                        {room.unreadCount}
+                        {Math.min(room.unreadCount, 99)}
                       </div>
                     ) : null}
                   </button>
@@ -684,22 +1038,128 @@ export function SchoolChatPanel({
                   <Users className="h-4.5 w-4.5" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="truncate text-lg font-semibold text-[#111827]">{activeRoomMeta.name}</h3>
+                  <h3 className="truncate text-lg font-semibold text-[#111827]">{activeRoomMeta?.name ?? "Conversation"}</h3>
                   <p className="text-sm text-[#6B7280]">
                     {activeMembers.length} members
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button className="rounded-xl p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]">
+              <div className="flex items-center gap-2" ref={menuRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsHeaderSearchOpen((current) => !current);
+                    if (isHeaderSearchOpen) {
+                      setHeaderSearchQuery("");
+                    }
+                  }}
+                  className={`rounded-xl p-2 transition hover:bg-[#F9FAFB] hover:text-[#111827] ${
+                    isHeaderSearchOpen ? "bg-[#F5F3FF] text-[#6D28D9]" : "text-[#6B7280]"
+                  }`}
+                >
                   <Search className="h-4 w-4" />
                 </button>
-                <button className="rounded-xl p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]">
+                <button
+                  type="button"
+                  onClick={() => setIsMenuOpen((current) => !current)}
+                  className="rounded-xl p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]"
+                >
                   <MoreHorizontal className="h-4 w-4" />
                 </button>
+
+                {isMenuOpen ? (
+                  <div className="absolute right-6 top-[74px] z-20 w-[240px] rounded-2xl border border-[#E5E7EB] bg-white p-2 shadow-[0_16px_32px_rgba(17,24,39,0.08)]">
+                    {[
+                      { label: "Group Info", action: () => openInfoPanel("members") },
+                      { label: "View Members", action: () => openInfoPanel("members") },
+                      { label: "Shared Media", action: () => openInfoPanel("media") },
+                      { label: "Shared Files", action: () => openInfoPanel("files") },
+                      { label: "Pinned Messages", action: () => openInfoPanel("pinned") },
+                      { label: "Notification Settings", action: () => openInfoPanel("links") },
+                      { label: "Leave Group", action: () => setIsMenuOpen(false) },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={item.action}
+                        className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-[#111827] transition hover:bg-[#F9FAFB]"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
+
+            {isHeaderSearchOpen ? (
+              <div className="mt-4 space-y-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+                  <Input
+                    ref={headerSearchInputRef}
+                    value={headerSearchQuery}
+                    onChange={(event) => setHeaderSearchQuery(event.target.value)}
+                    placeholder="Search messages, files, links..."
+                    className="h-11 rounded-2xl border-[#E5E7EB] bg-[#FAFAFA] pl-11 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsHeaderSearchOpen(false);
+                      setHeaderSearchQuery("");
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-[#9CA3AF] transition hover:bg-white hover:text-[#111827]"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {headerSearchQuery.trim() ? (
+                  <div className="max-h-[220px] overflow-y-auto rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] p-2">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((message) => (
+                        <button
+                          key={message.id}
+                          type="button"
+                          onClick={() => {
+                            scrollToMessage(message.id);
+                            setIsHeaderSearchOpen(false);
+                          }}
+                          className="flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-white"
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-xs font-semibold text-[#111827]">
+                            {message.userAvatar ? (
+                              <img src={message.userAvatar} alt={message.userName} className="h-full w-full rounded-full object-cover" />
+                            ) : (
+                              initials(message.userName)
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="truncate text-sm font-medium text-[#111827]">{message.userName}</p>
+                              <span className="text-xs text-[#9CA3AF]">{formatRelativeDate(message.createdAt)}</span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-sm text-[#6B7280]">
+                              {highlightMatch(
+                                message.content || message.attachmentName || renderAttachmentPreview(message)?.label || "Shared attachment",
+                                headerSearchQuery,
+                              )}
+                            </p>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-8 text-center">
+                        <p className="text-sm font-medium text-[#111827]">No matching messages</p>
+                        <p className="mt-1 text-sm text-[#6B7280]">Try a different keyword or file name.</p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {showPinnedMessage ? (
               <div className="mt-4 flex items-start justify-between gap-3 rounded-2xl border border-[#E9D5FF] bg-[#FAF5FF] px-4 py-3">
@@ -738,7 +1198,7 @@ export function SchoolChatPanel({
               ) : groupedMessages.length === 0 ? (
                 <EmptyState
                   icon={MessageSquareMore}
-                  title={`No messages in ${activeRoomMeta.name} yet`}
+                  title={`No messages in ${activeRoomMeta?.name ?? "this conversation"} yet`}
                   description="Start the conversation and coordinate with teachers in this room."
                 />
               ) : (
@@ -757,7 +1217,13 @@ export function SchoolChatPanel({
                         const parentMessage = message.parentId ? messagesById.get(message.parentId) ?? null : null;
 
                         return (
-                          <div key={message.id} className={`flex gap-3 ${isOwn ? "justify-end" : "justify-start"}`}>
+                          <div
+                            key={message.id}
+                            ref={(node) => {
+                              messageRefs.current[message.id] = node;
+                            }}
+                            className={`flex gap-3 rounded-2xl transition-all duration-200 ${isOwn ? "justify-end" : "justify-start"}`}
+                          >
                             {!isOwn ? (
                               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-sm font-semibold text-[#111827]">
                                 {message.userAvatar ? (
@@ -942,7 +1408,7 @@ export function SchoolChatPanel({
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={`Message ${activeRoomMeta.name}`}
+                    placeholder={`Message ${activeRoomMeta?.name ?? "conversation"}`}
                     className="min-h-[44px] flex-1 resize-none border-0 bg-transparent px-0 py-1 shadow-none focus-visible:ring-0"
                   />
                   <button type="button" className="rounded-xl p-2 text-[#6B7280] transition hover:bg-white hover:text-[#111827]">
@@ -967,77 +1433,363 @@ export function SchoolChatPanel({
           </div>
         </section>
 
-        <aside className="hidden min-h-0 overflow-y-auto border-l border-[#E5E7EB] bg-white 2xl:block">
-          <div className="border-b border-[#E5E7EB] px-5 py-6">
-            <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${activeRoomMeta.tone}`}>
-              <Users className="h-5 w-5" />
+      </div>
+
+      {isCreateConversationOpen ? (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 p-6 backdrop-blur-sm"
+          onClick={() => setIsCreateConversationOpen(false)}
+        >
+          <div
+            className="w-full max-w-[520px] rounded-[24px] border border-[#E5E7EB] bg-white p-6 shadow-[0_24px_48px_rgba(17,24,39,0.12)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-[#111827]">Start a new conversation</h3>
+                <p className="mt-1 text-sm text-[#6B7280]">
+                  Create a group for your school team or message a teacher directly.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateConversationOpen(false)}
+                className="rounded-xl p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <h3 className="mt-4 text-[20px] font-semibold text-[#111827]">{activeRoomMeta.name}</h3>
-            <p className="mt-1 text-sm text-[#6B7280]">
-              {activeMembers.length} members
-            </p>
-            <p className="mt-4 text-sm leading-6 text-[#6B7280]">
-              {ROOM_DESCRIPTIONS[activeRoom]}
-            </p>
+
+            <form className="mt-6 space-y-5" onSubmit={handleCreateConversationSubmit}>
+              <div className="flex gap-2 rounded-2xl bg-[#F9FAFB] p-1">
+                {(["group", "direct"] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setConversationType(type);
+                      setConversationName("");
+                      setSelectedTeacherIds([]);
+                    }}
+                    className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                      conversationType === type
+                        ? "bg-white text-[#6D28D9] shadow-[0_1px_2px_rgba(17,24,39,0.05)]"
+                        : "text-[#6B7280]"
+                    }`}
+                  >
+                    {type === "group" ? "Group chat" : "Direct message"}
+                  </button>
+                ))}
+              </div>
+
+              {conversationType === "group" ? (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#111827]">Group name</label>
+                  <Input
+                    value={conversationName}
+                    onChange={(event) => setConversationName(event.target.value)}
+                    placeholder="e.g. ICT Teachers"
+                    className="h-11 rounded-2xl border-[#E5E7EB]"
+                  />
+                </div>
+              ) : null}
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#111827]">
+                  {conversationType === "group" ? "Choose teachers" : "Message teacher"}
+                </label>
+                <div className="max-h-[240px] space-y-2 overflow-y-auto rounded-2xl border border-[#E5E7EB] p-2">
+                  {availableTeachers.map((teacher) => {
+                    const isSelected = selectedTeacherIds.includes(teacher.id);
+                    return (
+                      <button
+                        key={teacher.id}
+                        type="button"
+                        onClick={() => {
+                          if (conversationType === "direct") {
+                            setSelectedTeacherIds([teacher.id]);
+                            return;
+                          }
+
+                          setSelectedTeacherIds((current) =>
+                            isSelected ? current.filter((id) => id !== teacher.id) : [...current, teacher.id],
+                          );
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition ${
+                          isSelected ? "bg-[#F5F3FF]" : "hover:bg-[#F9FAFB]"
+                        }`}
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-[#E5E7EB] bg-[#FAFAFA] text-sm font-semibold text-[#111827]">
+                          {teacher.avatar ? (
+                            <img src={teacher.avatar} alt={teacher.name} className="h-full w-full object-cover" />
+                          ) : (
+                            initials(teacher.name)
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#111827]">{teacher.name}</p>
+                          <p className="truncate text-xs text-[#6B7280]">{teacher.email}</p>
+                        </div>
+                        {isSelected ? (
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#6D28D9] text-white">
+                            <Check className="h-3.5 w-3.5" />
+                          </div>
+                        ) : conversationType === "direct" ? (
+                          <UserRound className="h-4 w-4 text-[#9CA3AF]" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => setIsCreateConversationOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  loading={creatingConversation}
+                  loadingText="Creating..."
+                  className="rounded-xl bg-[#6D28D9] text-white hover:bg-[#5B21B6]"
+                >
+                  {conversationType === "group" ? "Create Group" : "Start Chat"}
+                </Button>
+              </div>
+            </form>
           </div>
+        </div>
+      ) : null}
 
-          <div className="space-y-6 px-5 py-5">
-            <div>
-              <p className="text-sm font-semibold text-[#111827]">Channel details</p>
-              <div className="mt-4 space-y-3">
-                {[
-                  { label: "Notifications", value: "On", icon: Bell },
-                  { label: "Shared Media", value: String(roomStats.media), icon: Images },
-                  { label: "Files", value: String(roomStats.files), icon: FileText },
-                  { label: "Links", value: String(roomStats.links), icon: Link2 },
-                  { label: "Pinned Messages", value: String(roomStats.pinned), icon: Pin },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-2xl border border-[#F3F4F6] px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F9FAFB] text-[#6B7280]">
-                        <item.icon className="h-4 w-4" />
-                      </div>
-                      <span className="text-sm text-[#111827]">{item.label}</span>
-                    </div>
-                    <span className="text-sm text-[#6B7280]">{item.value}</span>
-                  </div>
-                ))}
+      <div
+        className={`pointer-events-none absolute inset-y-0 right-0 z-30 w-full max-w-[360px] transform border-l border-[#E5E7EB] bg-white transition duration-200 ${
+          isInfoPanelOpen ? "translate-x-0 pointer-events-auto" : "translate-x-full"
+        }`}
+      >
+        <div className="flex h-full flex-col">
+          <div className="border-b border-[#E5E7EB] px-5 py-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${activeRoomMeta?.tone ?? "bg-[#F5F3FF] text-[#6D28D9]"}`}>
+                  {activeRoomMeta?.type === "direct" ? <UserRound className="h-5 w-5" /> : <Users className="h-5 w-5" />}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="truncate text-[20px] font-semibold text-[#111827]">{activeRoomMeta?.name ?? "Conversation"}</h3>
+                  <p className="mt-1 text-sm text-[#6B7280]">{activeMembers.length} members</p>
+                  <p className="mt-3 text-sm leading-6 text-[#6B7280]">
+                    {activeRoomMeta ? getConversationDescription(activeRoomMeta) : "School collaboration conversation."}
+                  </p>
+                </div>
               </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-[#111827]">Members</p>
-                <span className="text-xs text-[#9CA3AF]">{activeMembers.length}</span>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {activeMembers.slice(0, 6).map((member) => (
-                  <div key={member.id} className="flex items-center gap-3 rounded-2xl border border-[#F3F4F6] px-3 py-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E5E7EB] bg-[#FAFAFA] text-sm font-semibold text-[#111827]">
-                      {member.avatar ? (
-                        <img src={member.avatar} alt={member.name} className="h-full w-full rounded-full object-cover" />
-                      ) : (
-                        initials(member.name)
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-[#111827]">{member.name}</p>
-                      <p className="text-xs text-[#6B7280]">{member.status}</p>
-                    </div>
-                    <span className="rounded-full bg-[#F5F3FF] px-2 py-1 text-[11px] font-medium text-[#6D28D9]">
-                      {member.role}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <button type="button" className="mt-4 text-sm font-medium text-[#6D28D9]">
-                View all members →
+              <button
+                type="button"
+                onClick={() => setIsInfoPanelOpen(false)}
+                className="rounded-xl p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
-        </aside>
+
+          <div className="border-b border-[#E5E7EB] px-5 py-3">
+            <div className="grid grid-cols-5 gap-2 text-xs">
+              {[
+                { id: "members", label: "Members" },
+                { id: "media", label: "Media" },
+                { id: "files", label: "Files" },
+                { id: "links", label: "Links" },
+                { id: "pinned", label: "Pinned" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setInfoPanelTab(tab.id as GroupInfoTab)}
+                  className={`rounded-xl px-2 py-2 font-medium transition ${
+                    infoPanelTab === tab.id ? "bg-[#F5F3FF] text-[#6D28D9]" : "text-[#6B7280] hover:bg-[#F9FAFB]"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+            {infoPanelTab === "members" ? (
+              <div className="space-y-3">
+                {renderInfoList([
+                  { label: "Notifications", value: "On", icon: Bell, onClick: () => setInfoPanelTab("links") },
+                  { label: "Shared Media", value: String(sharedMedia.length), icon: Images, onClick: () => setInfoPanelTab("media") },
+                  { label: "Files", value: String(sharedFiles.length), icon: FileText, onClick: () => setInfoPanelTab("files") },
+                  { label: "Links", value: String(sharedLinks.length), icon: LinkIcon, onClick: () => setInfoPanelTab("links") },
+                  { label: "Pinned Messages", value: String(pinnedMessages.length), icon: Pin, onClick: () => setInfoPanelTab("pinned") },
+                ])}
+
+                <div className="pt-3">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-[#111827]">Members</p>
+                    <span className="text-xs text-[#9CA3AF]">{activeMembers.length}</span>
+                  </div>
+                  <div className="space-y-3">
+                    {activeMembers.map((member) => {
+                      const teacher = teacherMap.get(member.id);
+                      const role = member.id === activeRoomMeta?.createdBy || member.id === currentUserId ? "Admin" : "Teacher";
+                      return (
+                        <div key={member.id} className="flex items-center gap-3 rounded-2xl border border-[#F3F4F6] px-3 py-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E5E7EB] bg-[#FAFAFA] text-sm font-semibold text-[#111827]">
+                            {member.avatar ? (
+                              <img src={member.avatar} alt={member.name} className="h-full w-full rounded-full object-cover" />
+                            ) : (
+                              initials(member.name)
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-[#111827]">{member.name}</p>
+                            <p className="truncate text-xs text-[#6B7280]">
+                              {teacher?.subject || "Teacher"}{teacher?.grade ? ` • ${teacher.grade}` : ""} • {member.status}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-[#F5F3FF] px-2 py-1 text-[11px] font-medium text-[#6D28D9]">
+                            {role}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {infoPanelTab === "media" ? (
+              sharedMedia.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {sharedMedia.map(({ message, attachment }) => (
+                    <button
+                      key={message.id}
+                      type="button"
+                      onClick={() => attachment && setLightboxImage({ src: attachment.href, alt: attachment.label })}
+                      className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] text-left transition hover:bg-white"
+                    >
+                      <img src={attachment!.href} alt={attachment!.label} className="h-28 w-full object-cover" />
+                      <div className="px-3 py-3">
+                        <p className="truncate text-sm font-medium text-[#111827]">{attachment!.label}</p>
+                        <p className="mt-1 text-xs text-[#6B7280]">by {message.userName}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState icon={ImageIcon} title="No shared media yet" description="Images shared in this conversation will appear here." />
+              )
+            ) : null}
+
+            {infoPanelTab === "files" ? (
+              sharedFiles.length > 0 ? (
+                <div className="space-y-3">
+                  {sharedFiles.map(({ message, attachment }) => (
+                    <a
+                      key={message.id}
+                      href={attachment!.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-3 rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] px-3 py-3 transition hover:bg-white"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#6D28D9]">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-[#111827]">{attachment!.label}</p>
+                        <p className="mt-1 text-xs text-[#6B7280]">
+                          {[formatFileSize(attachment!.size), `by ${message.userName}`, formatRelativeDate(message.createdAt)].filter(Boolean).join(" • ")}
+                        </p>
+                      </div>
+                      <ExternalLink className="h-4 w-4 text-[#6B7280]" />
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState icon={FileText} title="No shared files yet" description="Documents and worksheets shared in chat will appear here." />
+              )
+            ) : null}
+
+            {infoPanelTab === "links" ? (
+              sharedLinks.length > 0 ? (
+                <div className="space-y-3">
+                  {sharedLinks.map(({ message, attachment }) => (
+                    <a
+                      key={message.id}
+                      href={attachment!.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] px-3 py-3 transition hover:bg-white"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#6D28D9]">
+                          <Link2 className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#111827]">{attachment!.label}</p>
+                          <p className="mt-1 truncate text-xs text-[#6B7280]">{attachment!.href}</p>
+                          <p className="mt-2 text-xs text-[#9CA3AF]">Shared by {message.userName}</p>
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] px-4 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#6D28D9]">
+                        <Settings2 className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[#111827]">Notifications</p>
+                        <p className="mt-1 text-xs text-[#6B7280]">Message alerts are enabled for this conversation.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <EmptyState icon={Link2} title="No shared links yet" description="Links shared in chat will appear here." />
+                </div>
+              )
+            ) : null}
+
+            {infoPanelTab === "pinned" ? (
+              pinnedMessages.length > 0 ? (
+                <div className="space-y-3">
+                  {pinnedMessages.map((message) => (
+                    <button
+                      key={message.id}
+                      type="button"
+                      onClick={() => {
+                        setIsInfoPanelOpen(false);
+                        scrollToMessage(message.id);
+                      }}
+                      className="w-full rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] px-4 py-4 text-left transition hover:bg-white"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#6D28D9]">
+                          <Pin className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[#111827]">{message.userId === currentUserId ? "You" : message.userName}</p>
+                          <p className="mt-1 line-clamp-3 text-sm text-[#6B7280]">{message.content || message.attachmentName || "Pinned attachment"}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState icon={Pin} title="No pinned messages" description="Pinned items for this conversation will appear here." />
+              )
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {lightboxImage ? (
