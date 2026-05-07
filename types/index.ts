@@ -1,5 +1,7 @@
 export type ResourceType = "pdf" | "ppt" | "docx" | "image" | "link" | "other";
 export type ResourceScope = "common" | "school";
+export type SchoolChatRoom = "general" | "grade-3" | "science";
+export type SchoolChatAttachmentType = "image" | "file" | "link";
 
 export interface UserProfile {
   uid: string;
@@ -22,10 +24,16 @@ export interface SchoolRecord {
 export interface SchoolMessage {
   id: string;
   schoolId: string;
+  room: SchoolChatRoom;
   userId: string;
   userName: string;
   userAvatar?: string | null;
   content: string;
+  parentId?: string | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentType?: SchoolChatAttachmentType | null;
+  attachmentSize?: number | null;
   createdAt: string;
 }
 
@@ -86,4 +94,12 @@ export interface ResourceFilters {
   search: string;
   subject: string;
   grade: string;
+}
+
+export interface NotificationItem {
+  id: string;
+  type: "resource" | "post" | "comment" | "school-message";
+  title: string;
+  description: string;
+  createdAt: string;
 }

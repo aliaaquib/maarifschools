@@ -61,8 +61,14 @@ create table if not exists public.resource_versions (
 create table if not exists public.school_messages (
   id uuid primary key default gen_random_uuid(),
   school_id uuid references public.schools(id) on delete cascade,
+  room text not null default 'general',
   user_id uuid references public.users(id) on delete set null,
   content text,
+  parent_id uuid references public.school_messages(id) on delete set null,
+  attachment_url text,
+  attachment_name text,
+  attachment_type text check (attachment_type in ('image', 'file', 'link')),
+  attachment_size bigint,
   created_at timestamp with time zone default now()
 );
 
@@ -88,6 +94,8 @@ create index if not exists users_school_id_idx on public.users (school_id);
 create index if not exists resources_school_id_idx on public.resources (school_id);
 create index if not exists resources_resource_scope_idx on public.resources (resource_scope);
 create index if not exists school_messages_school_id_idx on public.school_messages (school_id);
+create index if not exists school_messages_room_idx on public.school_messages (school_id, room, created_at);
+create index if not exists school_messages_parent_id_idx on public.school_messages (parent_id);
 
 alter table public.users enable row level security;
 alter table public.schools enable row level security;

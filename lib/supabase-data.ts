@@ -54,10 +54,24 @@ function normalizeSchoolMessage(raw: Row): SchoolMessage {
   return {
     id: String(raw.id ?? ""),
     schoolId: String(raw.school_id ?? ""),
+    room: raw.room === "grade-3" || raw.room === "science" ? raw.room : "general",
     userId: String(raw.user_id ?? ""),
     userName: String(user?.name ?? "Teacher"),
     userAvatar: user?.avatar ? String(user.avatar) : null,
     content: String(raw.content ?? ""),
+    parentId: raw.parent_id ? String(raw.parent_id) : null,
+    attachmentUrl: raw.attachment_url ? String(raw.attachment_url) : null,
+    attachmentName: raw.attachment_name ? String(raw.attachment_name) : null,
+    attachmentSize:
+      typeof raw.attachment_size === "number"
+        ? raw.attachment_size
+        : typeof raw.attachment_size === "string"
+          ? Number(raw.attachment_size)
+          : null,
+    attachmentType:
+      raw.attachment_type === "image" || raw.attachment_type === "link" || raw.attachment_type === "file"
+        ? raw.attachment_type
+        : null,
     createdAt: toIsoDate(raw.created_at),
   };
 }
@@ -117,6 +131,76 @@ function normalizeResource(raw: Row): ResourceRecord {
       ? raw.bookmarks.filter((id): id is string => typeof id === "string")
       : [],
   };
+}
+
+async function attachUsers(rows: Row[], userIdField: string = "user_id") {
+  const userIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row[userIdField])
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+
+  if (userIds.length === 0) {
+    return rows;
+  }
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, name, avatar")
+    .in("id", userIds);
+
+  if (error) {
+    return rows;
+  }
+
+  const usersById = new Map(
+    (data ?? []).map((user) => [String(user.id), user as Row]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    users: usersById.get(String(row[userIdField] ?? "")) ?? null,
+  }));
+}
+
+async function attachResourceVersions(rows: Row[]) {
+  const resourceIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.id)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+
+  if (resourceIds.length === 0) {
+    return rows;
+  }
+
+  const { data, error } = await supabase
+    .from("resource_versions")
+    .select("resource_id, file_url, storage_path, created_at")
+    .in("resource_id", resourceIds)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return rows.map((row) => ({ ...row, resource_versions: [] }));
+  }
+
+  const versionsByResourceId = new Map<string, Row[]>();
+  for (const version of (data ?? []) as Row[]) {
+    const resourceId = String(version.resource_id ?? "");
+    if (!versionsByResourceId.has(resourceId)) {
+      versionsByResourceId.set(resourceId, []);
+    }
+    versionsByResourceId.get(resourceId)?.push(version);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    resource_versions: versionsByResourceId.get(String(row.id ?? "")) ?? [],
+  }));
 }
 
 function createRealtimeChannel(
@@ -242,42 +326,167 @@ export function getSchoolMessages(
   onError: (error: Error) => void,
 ) {
   const refresh = async () => {
-    const { data, error } = await supabase
+    const roomAwareQuery = await supabase
       .from("school_messages")
-      .select("id, school_id, user_id, content, created_at, users(name, avatar)")
+      .select("id, school_id, room, user_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at, users(name, avatar)")
       .eq("school_id", schoolId)
       .order("created_at", { ascending: true });
 
-    if (error) {
-      onError(new Error(error.message));
+    if (!roomAwareQuery.error) {
+      onData((roomAwareQuery.data ?? []).map((row) => normalizeSchoolMessage(row as Row)));
       return;
     }
 
-    onData((data ?? []).map((row) => normalizeSchoolMessage(row as Row)));
+    const attachmentAwareFallback = await supabase
+      .from("school_messages")
+      .select("id, school_id, room, user_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at")
+      .eq("school_id", schoolId)
+      .order("created_at", { ascending: true });
+
+    if (!attachmentAwareFallback.error) {
+      const rowsWithUsers = await attachUsers((attachmentAwareFallback.data ?? []) as Row[]);
+      onData(rowsWithUsers.map((row) => normalizeSchoolMessage(row as Row)));
+      return;
+    }
+
+    const fallbackQuery = await supabase
+      .from("school_messages")
+      .select("id, school_id, user_id, content, created_at")
+      .eq("school_id", schoolId)
+      .order("created_at", { ascending: true });
+
+    if (fallbackQuery.error) {
+      onError(new Error(fallbackQuery.error.message));
+      return;
+    }
+
+    const rowsWithUsers = await attachUsers((fallbackQuery.data ?? []) as Row[]);
+    onData(rowsWithUsers.map((row) => normalizeSchoolMessage(row as Row)));
   };
 
   void refresh();
   return createRealtimeChannel("school-messages-feed", "school_messages", refresh);
 }
 
-export async function createSchoolMessage(input: { schoolId: string; userId: string; content: string }) {
-  const { data, error } = await supabase
+function detectChatAttachmentType(file: File | null | undefined) {
+  if (!file) {
+    return null;
+  }
+
+  if (file.type.startsWith("image/")) {
+    return "image" as const;
+  }
+
+  return "file" as const;
+}
+
+export async function createSchoolMessage(input: {
+  schoolId: string;
+  userId: string;
+  content: string;
+  room: SchoolMessage["room"];
+  parentId?: string | null;
+  file?: File | null;
+}) {
+  let attachmentUrl: string | null = null;
+  let attachmentName: string | null = null;
+  let attachmentType: SchoolMessage["attachmentType"] = null;
+  let attachmentSize: number | null = null;
+  let storagePath = "";
+
+  if (input.file) {
+    storagePath = `chat/${input.userId}/${Date.now()}-${input.file.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from("resources")
+      .upload(storagePath, input.file, { upsert: false });
+
+    if (uploadError) {
+      throw new Error(uploadError.message);
+    }
+
+    const { data } = supabase.storage.from("resources").getPublicUrl(storagePath);
+    attachmentUrl = data.publicUrl;
+    attachmentName = input.file.name;
+    attachmentType = detectChatAttachmentType(input.file);
+    attachmentSize = input.file.size;
+  }
+
+  const roomAwareInsert = await supabase
     .from("school_messages")
     .insert([
       {
         school_id: input.schoolId,
+        room: input.room,
         user_id: input.userId,
         content: input.content,
+        parent_id: input.parentId ?? null,
+        attachment_url: attachmentUrl,
+        attachment_name: attachmentName,
+        attachment_type: attachmentType,
+        attachment_size: attachmentSize,
       },
     ])
-    .select("id, school_id, user_id, content, created_at, users(name, avatar)")
+    .select("id, school_id, room, user_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at, users(name, avatar)")
     .single();
 
-  if (error || !data) {
-    throw new Error(error?.message ?? "Could not send message.");
+  if (!roomAwareInsert.error && roomAwareInsert.data) {
+    return normalizeSchoolMessage(roomAwareInsert.data as Row);
   }
 
-  return normalizeSchoolMessage(data as Row);
+  const fallbackPayloads = [
+    {
+      school_id: input.schoolId,
+      room: input.room,
+      user_id: input.userId,
+      content: input.content,
+      parent_id: input.parentId ?? null,
+      attachment_url: attachmentUrl,
+      attachment_name: attachmentName,
+      attachment_type: attachmentType,
+      attachment_size: attachmentSize,
+    },
+    {
+      school_id: input.schoolId,
+      room: input.room,
+      user_id: input.userId,
+      content: input.content,
+    },
+    {
+      school_id: input.schoolId,
+      user_id: input.userId,
+      content: input.content,
+    },
+  ].map((payload) =>
+    Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined && value !== null)),
+  );
+
+  let fallbackData: Row | null = null;
+  let fallbackErrorMessage = roomAwareInsert.error?.message ?? "Could not send message.";
+
+  for (const payload of fallbackPayloads) {
+    const attempt = await supabase
+      .from("school_messages")
+      .insert([payload])
+      .select("id, school_id, user_id, content, created_at")
+      .single();
+
+    if (!attempt.error && attempt.data) {
+      fallbackData = attempt.data as Row;
+      break;
+    }
+
+    fallbackErrorMessage = attempt.error?.message ?? fallbackErrorMessage;
+  }
+
+  if (!fallbackData) {
+  if (storagePath) {
+    await supabase.storage.from("resources").remove([storagePath]).catch(() => undefined);
+  }
+  throw new Error(fallbackErrorMessage);
+}
+
+  const [rowWithUser] = await attachUsers([fallbackData]);
+  return normalizeSchoolMessage(rowWithUser as Row);
 }
 
 export async function uploadAvatar(userId: string, file: File) {
@@ -299,7 +508,7 @@ export async function createPost(input: {
   userId: string;
   userName: string;
 }): Promise<DiscussionPost> {
-  const { data, error } = await supabase
+  const joinedInsert = await supabase
     .from("posts")
     .insert([
       {
@@ -312,11 +521,29 @@ export async function createPost(input: {
     .select("id, content, user_id, created_at, likes, bookmarks, users(name, avatar)")
     .single();
 
-  if (error || !data) {
-    throw new Error(error?.message ?? "Could not create post.");
+  if (!joinedInsert.error && joinedInsert.data) {
+    return normalizePost(joinedInsert.data as Row);
   }
 
-  return normalizePost(data as Row);
+  const fallbackInsert = await supabase
+    .from("posts")
+    .insert([
+      {
+        content: input.content,
+        user_id: input.userId,
+        likes: [],
+        bookmarks: [],
+      },
+    ])
+    .select("id, content, user_id, created_at, likes, bookmarks")
+    .single();
+
+  if (fallbackInsert.error || !fallbackInsert.data) {
+    throw new Error(fallbackInsert.error?.message ?? joinedInsert.error?.message ?? "Could not create post.");
+  }
+
+  const [rowWithUser] = await attachUsers([fallbackInsert.data as Row]);
+  return normalizePost(rowWithUser as Row);
 }
 
 export async function createComment(input: {
@@ -325,7 +552,7 @@ export async function createComment(input: {
   userId: string;
   userName: string;
 }): Promise<DiscussionComment> {
-  const { data, error } = await supabase
+  const joinedInsert = await supabase
     .from("comments")
     .insert([
       {
@@ -337,26 +564,54 @@ export async function createComment(input: {
     .select("id, post_id, content, user_id, created_at, users(name, avatar)")
     .single();
 
-  if (error || !data) {
-    throw new Error(error?.message ?? "Could not create comment.");
+  if (!joinedInsert.error && joinedInsert.data) {
+    return normalizeComment(joinedInsert.data as Row);
   }
 
-  return normalizeComment(data as Row);
+  const fallbackInsert = await supabase
+    .from("comments")
+    .insert([
+      {
+        post_id: input.postId,
+        content: input.content,
+        user_id: input.userId,
+      },
+    ])
+    .select("id, post_id, content, user_id, created_at")
+    .single();
+
+  if (fallbackInsert.error || !fallbackInsert.data) {
+    throw new Error(fallbackInsert.error?.message ?? joinedInsert.error?.message ?? "Could not create comment.");
+  }
+
+  const [rowWithUser] = await attachUsers([fallbackInsert.data as Row]);
+  return normalizeComment(rowWithUser as Row);
 }
 
 export function getPosts(onData: (posts: DiscussionPost[]) => void, onError: (error: Error) => void) {
   const refresh = async () => {
-    const { data, error } = await supabase
+    const joinedQuery = await supabase
       .from("posts")
       .select("id, content, user_id, created_at, likes, bookmarks, users(name, avatar)")
       .order("created_at", { ascending: false });
 
-    if (error) {
-      onError(new Error(error.message));
+    if (!joinedQuery.error) {
+      onData((joinedQuery.data ?? []).map((row) => normalizePost(row as Row)));
       return;
     }
 
-    onData((data ?? []).map((row) => normalizePost(row as Row)));
+    const fallbackQuery = await supabase
+      .from("posts")
+      .select("id, content, user_id, created_at, likes, bookmarks")
+      .order("created_at", { ascending: false });
+
+    if (fallbackQuery.error) {
+      onError(new Error(fallbackQuery.error.message));
+      return;
+    }
+
+    const rowsWithUsers = await attachUsers((fallbackQuery.data ?? []) as Row[]);
+    onData(rowsWithUsers.map((row) => normalizePost(row as Row)));
   };
 
   void refresh();
@@ -365,17 +620,28 @@ export function getPosts(onData: (posts: DiscussionPost[]) => void, onError: (er
 
 export function getComments(onData: (comments: DiscussionComment[]) => void, onError: (error: Error) => void) {
   const refresh = async () => {
-    const { data, error } = await supabase
+    const joinedQuery = await supabase
       .from("comments")
       .select("id, post_id, content, user_id, created_at, users(name, avatar)")
       .order("created_at", { ascending: true });
 
-    if (error) {
-      onError(new Error(error.message));
+    if (!joinedQuery.error) {
+      onData((joinedQuery.data ?? []).map((row) => normalizeComment(row as Row)));
       return;
     }
 
-    onData((data ?? []).map((row) => normalizeComment(row as Row)));
+    const fallbackQuery = await supabase
+      .from("comments")
+      .select("id, post_id, content, user_id, created_at")
+      .order("created_at", { ascending: true });
+
+    if (fallbackQuery.error) {
+      onError(new Error(fallbackQuery.error.message));
+      return;
+    }
+
+    const rowsWithUsers = await attachUsers((fallbackQuery.data ?? []) as Row[]);
+    onData(rowsWithUsers.map((row) => normalizeComment(row as Row)));
   };
 
   void refresh();
@@ -388,25 +654,61 @@ export function getVisibleResources(
   onError: (error: Error) => void,
 ) {
   const refresh = async () => {
-    let query = supabase
+    let joinedQuery = supabase
       .from("resources")
       .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, created_at, users(name, avatar), resource_versions(file_url, storage_path, created_at)")
       .order("created_at", { ascending: false });
 
     if (schoolId) {
-      query = query.or(`resource_scope.eq.common,and(resource_scope.eq.school,school_id.eq.${schoolId})`);
+      joinedQuery = joinedQuery.or(`resource_scope.eq.common,and(resource_scope.eq.school,school_id.eq.${schoolId})`);
     } else {
-      query = query.eq("resource_scope", "common");
+      joinedQuery = joinedQuery.eq("resource_scope", "common");
     }
 
-    const { data, error } = await query;
+    const joinedResult = await joinedQuery;
 
-    if (error) {
-      onError(new Error(error.message));
+    if (!joinedResult.error) {
+      onData((joinedResult.data ?? []).map((row) => normalizeResource(row as Row)));
       return;
     }
 
-    onData((data ?? []).map((row) => normalizeResource(row as Row)));
+    let fallbackQuery = supabase
+      .from("resources")
+      .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, created_at")
+      .order("created_at", { ascending: false });
+
+    if (schoolId) {
+      fallbackQuery = fallbackQuery.or(`resource_scope.eq.common,and(resource_scope.eq.school,school_id.eq.${schoolId})`);
+    } else {
+      fallbackQuery = fallbackQuery.eq("resource_scope", "common");
+    }
+
+    const fallbackResult = await fallbackQuery;
+    let rows: Row[] = [];
+
+    if (fallbackResult.error) {
+      let legacyQuery = supabase
+        .from("resources")
+        .select("id, title, description, user_id, school_id, created_at")
+        .order("created_at", { ascending: false });
+
+      if (schoolId) {
+        legacyQuery = legacyQuery.or(`school_id.is.null,school_id.eq.${schoolId}`);
+      }
+
+      const legacyResult = await legacyQuery;
+      if (legacyResult.error) {
+        onError(new Error(legacyResult.error.message));
+        return;
+      }
+      rows = (legacyResult.data ?? []) as Row[];
+    } else {
+      rows = (fallbackResult.data ?? []) as Row[];
+    }
+
+    rows = await attachUsers(rows);
+    rows = await attachResourceVersions(rows);
+    onData(rows.map((row) => normalizeResource(row as Row)));
   };
 
   void refresh();
@@ -414,6 +716,10 @@ export function getVisibleResources(
 }
 
 export async function createResource(input: CreateResourceInput & { userId: string; userName: string; schoolId?: string | null }) {
+  if (!input.file && !input.externalUrl) {
+    throw new Error("Add a file or an external link before saving this resource.");
+  }
+
   let fileUrl = input.externalUrl ?? "";
   let storagePath = "";
 
@@ -433,27 +739,58 @@ export async function createResource(input: CreateResourceInput & { userId: stri
 
   const tags = [input.subject, input.grade].filter(Boolean);
 
-  const { data: resource, error: resourceError } = await supabase
-    .from("resources")
-    .insert([
-      {
-        title: input.title,
-        description: input.description,
-        user_id: input.userId,
-        school_id: input.resourceScope === "school" ? input.schoolId ?? null : null,
-        resource_scope: input.resourceScope,
-        file_type: detectFileType(input),
-        tags,
-        file_name: input.file?.name ?? null,
-        likes: [],
-        bookmarks: [],
-      },
-    ])
-    .select("id")
-    .single();
+  const basePayload = {
+    title: input.title,
+    description: input.description,
+    user_id: input.userId,
+    school_id: input.resourceScope === "school" ? input.schoolId ?? null : null,
+    resource_scope: input.resourceScope,
+    file_type: detectFileType(input),
+    tags,
+    file_name: input.file?.name ?? null,
+    likes: [],
+    bookmarks: [],
+  };
 
-  if (resourceError || !resource) {
-    throw new Error(resourceError?.message ?? "Unable to create resource.");
+  const candidatePayloads = [
+    basePayload,
+    { ...basePayload, file_name: undefined },
+    { ...basePayload, file_name: undefined, resource_scope: undefined },
+    {
+      title: input.title,
+      description: input.description,
+      user_id: input.userId,
+      school_id: input.resourceScope === "school" ? input.schoolId ?? null : null,
+    },
+  ].map((payload) =>
+    Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined)),
+  );
+
+  let resource: { id: string } | null = null;
+  let resourceInsertError: Error | null = null;
+
+  for (const payload of candidatePayloads) {
+    const { data, error } = await supabase
+      .from("resources")
+      .insert([payload])
+      .select("id")
+      .single();
+
+    if (!error && data) {
+      resource = data as { id: string };
+      resourceInsertError = null;
+      break;
+    }
+
+    resourceInsertError = new Error(error?.message ?? "Unable to create resource.");
+  }
+
+  if (!resource) {
+    if (storagePath) {
+      await supabase.storage.from("resources").remove([storagePath]).catch(() => undefined);
+    }
+
+    throw resourceInsertError ?? new Error("Unable to create resource.");
   }
 
   const { error: versionError } = await supabase.from("resource_versions").insert([
@@ -465,6 +802,14 @@ export async function createResource(input: CreateResourceInput & { userId: stri
   ]);
 
   if (versionError) {
+    try {
+      await supabase.from("resources").delete().eq("id", resource.id);
+    } catch {
+      // Ignore rollback cleanup failures.
+    }
+    if (storagePath) {
+      await supabase.storage.from("resources").remove([storagePath]).catch(() => undefined);
+    }
     throw new Error(versionError.message);
   }
 }

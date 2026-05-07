@@ -1,9 +1,13 @@
 "use client";
 
-import { Bell, ChevronDown, Search } from "lucide-react";
+import { Bell, ChevronDown, MessageCircle, Search, Upload, Users } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { SidebarMobileTrigger } from "@/components/layout/sidebar";
+import { Card } from "@/components/ui/card";
+import { NotificationItem } from "@/types";
+import { formatRelativeDate } from "@/lib/utils";
 import { initials } from "@/lib/utils";
 
 interface TopbarProps {
@@ -15,6 +19,9 @@ interface TopbarProps {
   userAvatar?: string | null;
   isMobileSidebarOpen: boolean;
   onToggleMobileSidebar: () => void;
+  notifications: NotificationItem[];
+  unreadNotifications: number;
+  onMarkNotificationsSeen: () => void;
 }
 
 export function Topbar({
@@ -24,7 +31,47 @@ export function Topbar({
   userAvatar,
   isMobileSidebarOpen,
   onToggleMobileSidebar,
+  notifications,
+  unreadNotifications,
+  onMarkNotificationsSeen,
 }: TopbarProps) {
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isNotificationsOpen) {
+      return;
+    }
+
+    onMarkNotificationsSeen();
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!notificationsRef.current?.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isNotificationsOpen, onMarkNotificationsSeen]);
+
+  function getNotificationIcon(type: NotificationItem["type"]) {
+    if (type === "resource") return <Upload className="h-4 w-4" />;
+    if (type === "school-message") return <Users className="h-4 w-4" />;
+    return <MessageCircle className="h-4 w-4" />;
+  }
+
   return (
     <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-[#E5E7EB] bg-white px-4 py-3 md:px-6">
       <SidebarMobileTrigger isOpen={isMobileSidebarOpen} onToggle={onToggleMobileSidebar} />
@@ -46,12 +93,63 @@ export function Topbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2 md:gap-3">
-        <button className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#111827] transition-all duration-150 hover:bg-[#F3F4F6]">
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EF4444] px-1 text-[10px] font-semibold text-white">
-            3
-          </span>
-        </button>
+        <div className="relative" ref={notificationsRef}>
+          <button
+            className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#111827] transition-all duration-150 hover:bg-[#F3F4F6]"
+            onClick={() => setIsNotificationsOpen((value) => !value)}
+            aria-label="Open notifications"
+          >
+            <Bell className="h-5 w-5" />
+            {unreadNotifications > 0 ? (
+              <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EF4444] px-1 text-[10px] font-semibold text-white">
+                {Math.min(unreadNotifications, 9)}
+              </span>
+            ) : null}
+          </button>
+
+          {isNotificationsOpen ? (
+            <Card className="absolute right-0 top-12 z-40 w-[320px] rounded-2xl border-[#E5E7EB] bg-white p-0 shadow-[0_16px_32px_rgba(17,24,39,0.08)]">
+              <div className="flex items-center justify-between border-b border-[#F3F4F6] px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#111827]">Notifications</p>
+                  <p className="text-xs text-[#6B7280]">Live updates from your workspace</p>
+                </div>
+              </div>
+              <div className="max-h-[360px] overflow-y-auto p-2">
+                {notifications.length > 0 ? (
+                  notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className="flex gap-3 rounded-2xl px-3 py-3 transition-colors duration-150 hover:bg-[#F9FAFB]"
+                    >
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F5F3FF] text-[#6D28D9]">
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm font-medium text-[#111827]">{notification.title}</p>
+                          <span className="shrink-0 text-xs text-[#9CA3AF]">
+                            {formatRelativeDate(notification.createdAt)}
+                          </span>
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-sm text-[#6B7280]">
+                          {notification.description}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-3 py-8 text-center">
+                    <p className="text-sm font-medium text-[#111827]">No new notifications</p>
+                    <p className="mt-1 text-sm text-[#6B7280]">
+                      New resources, posts, and school chat messages will show up here.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          ) : null}
+        </div>
 
         <div className="hidden items-center gap-3 rounded-full pl-1 pr-1 md:flex">
           <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#111827] text-sm font-semibold text-white">

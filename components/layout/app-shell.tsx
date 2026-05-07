@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, Plus, UserRound } from "lucide-react";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
@@ -51,6 +51,7 @@ import {
   CreateResourceInput,
   DiscussionComment,
   DiscussionPost,
+  NotificationItem,
   ResourceFilters,
   ResourceRecord,
   SchoolMessage,
@@ -76,6 +77,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
   const [loadingSchoolChat, setLoadingSchoolChat] = useState(true);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [workspaceSuccess, setWorkspaceSuccess] = useState<string | null>(null);
+  const [notificationsSeenAt, setNotificationsSeenAt] = useState(() => new Date().toISOString());
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isInviteTeachersOpen, setIsInviteTeachersOpen] = useState(false);
@@ -302,6 +304,66 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
       .slice(0, 6);
   }, [posts, resources]);
 
+  const notifications = useMemo<NotificationItem[]>(() => {
+    const resourceNotifications = resources
+      .filter((resource) => resource.userId !== currentUserId)
+      .map((resource) => ({
+        id: `resource-${resource.id}`,
+        type: "resource" as const,
+        title: `${resource.userName} uploaded a new resource`,
+        description: resource.title,
+        createdAt: resource.createdAt,
+      }));
+
+    const postNotifications = posts
+      .filter((post) => post.userId !== currentUserId)
+      .map((post) => ({
+        id: `post-${post.id}`,
+        type: "post" as const,
+        title: `${post.userName} started a discussion`,
+        description: post.content,
+        createdAt: post.createdAt,
+      }));
+
+    const commentNotifications = comments
+      .filter((comment) => comment.userId !== currentUserId)
+      .map((comment) => ({
+        id: `comment-${comment.id}`,
+        type: "comment" as const,
+        title: `${comment.userName} replied in community`,
+        description: comment.content,
+        createdAt: comment.createdAt,
+      }));
+
+    const schoolNotifications = schoolMessages
+      .filter((message) => message.userId !== currentUserId)
+      .map((message) => ({
+        id: `school-${message.id}`,
+        type: "school-message" as const,
+        title: `${message.userName} posted in school chat`,
+        description: message.content,
+        createdAt: message.createdAt,
+      }));
+
+    return [
+      ...resourceNotifications,
+      ...postNotifications,
+      ...commentNotifications,
+      ...schoolNotifications,
+    ]
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      .slice(0, 12);
+  }, [comments, currentUserId, posts, resources, schoolMessages]);
+
+  const unreadNotifications = useMemo(() => {
+    const seenAt = new Date(notificationsSeenAt).getTime();
+    return notifications.filter((notification) => new Date(notification.createdAt).getTime() > seenAt).length;
+  }, [notifications, notificationsSeenAt]);
+
+  const handleMarkNotificationsSeen = useCallback(() => {
+    setNotificationsSeenAt(new Date().toISOString());
+  }, []);
+
   useEffect(() => {
     if (activeItem === "bookmarks") {
       setSelectedResourceId(null);
@@ -477,17 +539,25 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
     setWorkspaceSuccess("Comment added.");
   }
 
-  async function handleCreateSchoolMessage(content: string) {
-    if (!profile?.schoolId || !user) {
+  async function handleCreateSchoolMessage(input: {
+    content: string;
+    room: SchoolMessage["room"];
+    parentId?: string | null;
+    file?: File | null;
+  }) {
+    if (!activeProfile.schoolId || !user) {
       throw new Error("Your account is not linked to a school yet.");
     }
 
     await ensureCurrentUserProfileRecord();
 
     const createdMessage = await createSchoolMessage({
-      schoolId: profile.schoolId,
+      schoolId: activeProfile.schoolId,
       userId: user.id,
-      content,
+      content: input.content,
+      room: input.room,
+      parentId: input.parentId,
+      file: input.file,
     });
 
     setSchoolMessages((current) =>
@@ -626,6 +696,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
         return (
           <DashboardOverview
             profile={activeProfile}
+            currentUserId={currentUserId}
             resources={filteredResources}
             myResources={myResources}
             posts={posts}
@@ -636,6 +707,7 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
             onStartDiscussion={() => setActiveItem("community")}
             onExploreResources={() => setActiveItem("all")}
             onOpenSchoolChat={() => setActiveItem("school-chat")}
+            onSendSchoolMessage={handleCreateSchoolMessage}
             onSelectResource={(resource) => {
               handleSelectResource(resource);
               setActiveItem("all");
@@ -703,6 +775,8 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
             messages={schoolMessages}
             loading={loadingSchoolChat}
             currentUserId={currentUserId}
+            currentUserName={activeProfile.name}
+            currentUserAvatar={activeProfile.avatar ?? null}
             onSendMessage={handleCreateSchoolMessage}
           />
         );
@@ -999,12 +1073,17 @@ export function AppShell({ initialActiveItem = "dashboard" }: { initialActiveIte
               userAvatar={activeProfile.avatar ?? null}
               isMobileSidebarOpen={isMobileOpen}
               onToggleMobileSidebar={() => setIsMobileOpen((value) => !value)}
+              notifications={notifications}
+              unreadNotifications={unreadNotifications}
+              onMarkNotificationsSeen={handleMarkNotificationsSeen}
             />
 
-            <main className={activeItem === "dashboard" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto"}>
+            <main className={activeItem === "dashboard" || activeItem === "school-chat" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto"}>
               <div className={activeItem === "dashboard"
                 ? "mx-auto flex h-full w-full max-w-[1440px] flex-col gap-4 px-4 pt-12 pb-3 md:px-6 md:pt-14 md:pb-4"
-                : "mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 pt-14 pb-6 md:px-6 md:pt-16 md:pb-8"}>
+                : activeItem === "school-chat"
+                  ? "mx-auto flex h-full w-full max-w-[1440px] flex-col px-4 pt-10 pb-3 md:px-6 md:pt-12 md:pb-4"
+                  : "mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 pt-14 pb-6 md:px-6 md:pt-16 md:pb-8"}>
                 {renderWorkspace()}
               </div>
             </main>
