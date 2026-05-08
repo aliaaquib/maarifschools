@@ -17,6 +17,7 @@ import {
   Sparkles,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -213,6 +214,7 @@ export function CommunityPanel({
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<CommunityCategory>(initialCategory);
   const [composerKind, setComposerKind] = useState<ComposerKind>("discussions");
+  const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
   const [composerTitle, setComposerTitle] = useState("");
   const [composerBody, setComposerBody] = useState("");
   const [composerTags, setComposerTags] = useState("");
@@ -232,6 +234,15 @@ export function CommunityPanel({
   useEffect(() => {
     setActiveCategory(initialCategory);
   }, [initialCategory]);
+
+  useEffect(() => {
+    if (!isCreatePostOpen) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => composerRef.current?.focus(), 40);
+    return () => window.clearTimeout(timer);
+  }, [isCreatePostOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -457,6 +468,7 @@ export function CommunityPanel({
       setComposerBody("");
       setComposerTags("");
       setComposerKind("discussions");
+      setIsCreatePostOpen(false);
     } catch (error) {
       setPendingMeta(null);
       setPostError(toUserFacingError(error, "We could not publish your post. Please try again."));
@@ -491,62 +503,14 @@ export function CommunityPanel({
     }
 
     return (
-      <Card className="rounded-[20px] border-[#E5E7EB] bg-white p-0">
-        <form onSubmit={handlePostSubmit}>
-          <div className="flex items-start gap-3 px-4 py-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#111827] text-sm font-semibold text-white">
-              {currentUserAvatar ? (
-                <img
-                  src={currentUserAvatar}
-                  alt={currentUserName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                initials(currentUserName)
-              )}
-            </div>
-            <div className="min-w-0 flex-1 space-y-2.5">
-              <div className="space-y-2.5">
-                <input
-                  ref={composerRef}
-                  value={composerTitle}
-                  onChange={(event) => setComposerTitle(event.target.value)}
-                  placeholder={`What's on your mind, ${currentUserName}?`}
-                  className="h-9 w-full border-0 bg-transparent px-0 text-[14px] font-medium text-[#111827] outline-none ring-0 placeholder:text-[#94A3B8] focus:outline-none focus:ring-0"
-                />
-                <div className="h-px w-full bg-[#E5E7EB]" />
-                <Textarea
-                  value={composerBody}
-                  onChange={(event) => setComposerBody(event.target.value)}
-                  placeholder="Describe your topic..."
-                  className="min-h-[52px] resize-none border-0 bg-transparent px-0 py-0 text-[14px] text-[#111827] shadow-none placeholder:text-[#94A3B8] focus-visible:ring-0"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-[#E5E7EB] px-4 py-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <input
-                value={composerTags}
-                onChange={(event) => setComposerTags(event.target.value)}
-                placeholder="Add tags separated by commas"
-                className="h-9 flex-1 border-0 bg-transparent px-1 text-[13px] text-[#6B7280] outline-none placeholder:text-[#9CA3AF] focus:outline-none focus:ring-0"
-              />
-              <Button
-                type="submit"
-                className="rounded-xl bg-[#6D28D9] px-5 text-white hover:bg-[#5B21B6]"
-                loading={submittingPost}
-                loadingText="Posting..."
-              >
-                Post
-              </Button>
-            </div>
-          </div>
-
-          {postError ? <p className="px-6 pb-5 text-sm text-[#B91C1C]">{postError}</p> : null}
-        </form>
-      </Card>
+      <div className="pointer-events-none fixed bottom-6 right-6 z-40">
+        <Button
+          className="pointer-events-auto rounded-xl bg-[#6D28D9] px-5 text-white shadow-[0_12px_30px_rgba(109,40,217,0.18)] hover:bg-[#5B21B6]"
+          onClick={() => setIsCreatePostOpen(true)}
+        >
+          Create Post
+        </Button>
+      </div>
     );
   }
 
@@ -658,7 +622,7 @@ export function CommunityPanel({
           description={emptyDescription}
           action={
             showComposer ? (
-              <Button onClick={() => composerRef.current?.focus()}>Create a post</Button>
+              <Button onClick={() => setIsCreatePostOpen(true)}>Create a post</Button>
             ) : undefined
           }
         />
@@ -995,6 +959,90 @@ export function CommunityPanel({
         </div>
         {renderInsights()}
       </div>
+
+      {isCreatePostOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 backdrop-blur-sm">
+          <Card className="w-full max-w-2xl rounded-2xl border-[#E5E7EB] bg-white p-6 shadow-[0_20px_60px_rgba(17,24,39,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <h2 className="text-[22px] font-semibold text-[#111827]">Create Post</h2>
+                <p className="text-[14px] text-[#6B7280]">Share an update, question, or teaching idea with the community.</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-full p-2 text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#111827]"
+                onClick={() => setIsCreatePostOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form className="mt-6 space-y-5" onSubmit={(event) => void handlePostSubmit(event)}>
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">Post type</label>
+                  <select
+                    value={composerKind}
+                    onChange={(event) => setComposerKind(event.target.value as ComposerKind)}
+                    className="h-12 w-full rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 text-[14px] text-[#111827] outline-none"
+                  >
+                    <option value="discussions">Discussion</option>
+                    <option value="resources">Resource</option>
+                    <option value="questions">Question</option>
+                    <option value="announcements">Announcement</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">Title</label>
+                  <input
+                    ref={composerRef}
+                    value={composerTitle}
+                    onChange={(event) => setComposerTitle(event.target.value)}
+                    placeholder={`What's on your mind, ${currentUserName}?`}
+                    className="h-12 w-full rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 text-[14px] text-[#111827] outline-none transition focus:border-[#D1D5DB]"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">Description</label>
+                <Textarea
+                  value={composerBody}
+                  onChange={(event) => setComposerBody(event.target.value)}
+                  placeholder="Describe your topic..."
+                  className="min-h-[140px] rounded-xl border-[#E5E7EB] bg-[#F9FAFB] text-[14px] leading-[1.6]"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">Tags</label>
+                <input
+                  value={composerTags}
+                  onChange={(event) => setComposerTags(event.target.value)}
+                  placeholder="Add tags separated by commas"
+                  className="h-12 w-full rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 text-[14px] text-[#111827] outline-none transition focus:border-[#D1D5DB]"
+                />
+              </div>
+
+              {postError ? <p className="text-[14px] text-[#B91C1C]">{postError}</p> : null}
+
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="outline" className="rounded-xl border-[#E5E7EB]" onClick={() => setIsCreatePostOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="rounded-xl bg-[#6D28D9] px-5 text-white hover:bg-[#5B21B6]"
+                  loading={submittingPost}
+                  loadingText="Posting..."
+                >
+                  Create Post
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      ) : null}
     </div>
   );
 }
