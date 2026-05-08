@@ -25,7 +25,7 @@ interface AuthContextValue {
     email: string;
     password: string;
     schoolId: string;
-  }) => Promise<{ needsEmailConfirmation: boolean }>;
+  }) => Promise<{ needsEmailConfirmation: boolean; hasSession: boolean }>;
   signIn: (payload: { email: string; password: string }) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
@@ -81,6 +81,24 @@ function getReadableAuthError(error: unknown, action: "create your account" | "s
 
   if (error instanceof Error) {
     const lowered = error.message.toLowerCase();
+
+    if (action === "create your account") {
+      if (
+        lowered.includes("already registered") ||
+        lowered.includes("user already registered") ||
+        lowered.includes("already been registered")
+      ) {
+        return "An account with this email already exists. Try signing in instead.";
+      }
+
+      if (lowered.includes("password")) {
+        return "Your password does not meet the requirements. Please use at least 6 characters.";
+      }
+
+      if (lowered.includes("invalid email")) {
+        return "Please enter a valid email address.";
+      }
+    }
 
     if (
       lowered.includes("invalid login credentials") ||
@@ -291,6 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           return {
             needsEmailConfirmation: !data.session,
+            hasSession: Boolean(data.session),
           };
         } catch (error) {
           throw new Error(getReadableAuthError(error, "create your account"));

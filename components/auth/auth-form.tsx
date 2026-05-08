@@ -119,6 +119,11 @@ export function AuthForm({ mode }: AuthFormProps) {
           router.replace(nextLoginHref);
           return;
         }
+
+        if (result.hasSession && typeof window !== "undefined") {
+          window.location.assign(nextDestination);
+          return;
+        }
       } else {
         await signIn({ email, password });
       }

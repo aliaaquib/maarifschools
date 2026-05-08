@@ -8,6 +8,9 @@ const SAFE_USER_MESSAGES = new Set([
   "Your passwords do not match.",
   "The email or password you entered is incorrect. Please check both and try again.",
   "Your email address has not been confirmed yet. Please check your inbox and confirm your account first.",
+  "An account with this email already exists. Try signing in instead.",
+  "Your password does not meet the requirements. Please use at least 6 characters.",
+  "Please enter a valid email address.",
 ]);
 
 const INTERNAL_ERROR_PATTERNS = [
