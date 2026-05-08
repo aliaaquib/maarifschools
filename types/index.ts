@@ -118,7 +118,12 @@ export interface ResourceRecord {
   downloadCount?: number;
 }
 
-export type CommunityCategory = "all" | "questions" | "ideas" | "resources";
+export type CommunityCategory =
+  | "all"
+  | "discussions"
+  | "resources"
+  | "questions"
+  | "announcements";
 
 export interface CreateResourceInput {
   title: string;

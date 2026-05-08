@@ -15,6 +15,7 @@ interface TopbarProps {
   search: string;
   onSearchChange: (value: string) => void;
   onOpenLessonPlanner: () => void;
+  searchPlaceholder?: string;
   schoolName?: string | null;
   userName?: string | null;
   userAvatar?: string | null;
@@ -30,6 +31,7 @@ export function Topbar({
   search,
   onSearchChange,
   onOpenLessonPlanner,
+  searchPlaceholder = "Search resources, discussions, teachers...",
   userName,
   userAvatar,
   isMobileSidebarOpen,
@@ -86,7 +88,7 @@ export function Topbar({
           <Input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search resources, discussions, teachers..."
+            placeholder={searchPlaceholder}
             className="h-10 rounded-2xl border-[#E5E7EB] bg-[#F9FAFB] pl-11 pr-20 text-[#111827] placeholder:text-[#9CA3AF] focus:ring-[#6D28D9]/10"
           />
           <div className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-2.5 py-1 text-xs font-medium text-[#6B7280] md:flex">

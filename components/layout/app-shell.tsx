@@ -1271,6 +1271,36 @@ export function AppShell({
             comments={comments}
             loading={loadingCommunity}
             currentUserId={currentUserId}
+            currentUserName={activeProfile.name}
+            currentUserAvatar={activeProfile.avatar ?? null}
+            schoolTeachers={schoolTeachers}
+            resources={resources}
+            resourceCount={resources.length}
+            searchQuery={filters.search}
+            onCreatePost={handleCreatePost}
+            onCreateComment={handleCreateComment}
+            onTogglePostLike={handleTogglePostLike}
+            onTogglePostBookmark={handleTogglePostBookmark}
+            onDeletePost={handleDeletePost}
+            onDeleteComment={handleDeleteComment}
+          />
+        );
+      case "announcements":
+        return (
+          <CommunityPanel
+            title="Announcements"
+            description="Keep up with important teacher updates, school notices, and community-wide reminders."
+            posts={posts}
+            comments={comments}
+            loading={loadingCommunity}
+            currentUserId={currentUserId}
+            currentUserName={activeProfile.name}
+            currentUserAvatar={activeProfile.avatar ?? null}
+            schoolTeachers={schoolTeachers}
+            resources={resources}
+            resourceCount={resources.length}
+            searchQuery={filters.search}
+            initialCategory="announcements"
             onCreatePost={handleCreatePost}
             onCreateComment={handleCreateComment}
             onTogglePostLike={handleTogglePostLike}
@@ -1312,6 +1342,12 @@ export function AppShell({
               comments={comments}
               loading={loadingCommunity}
               currentUserId={currentUserId}
+              currentUserName={activeProfile.name}
+              currentUserAvatar={activeProfile.avatar ?? null}
+              schoolTeachers={schoolTeachers}
+              resources={resources}
+              resourceCount={resources.length}
+              searchQuery={filters.search}
               onCreatePost={handleCreatePost}
               onCreateComment={handleCreateComment}
               onTogglePostLike={handleTogglePostLike}
@@ -1403,6 +1439,11 @@ export function AppShell({
               search={filters.search}
               onSearchChange={(value) => setFilters((current) => ({ ...current, search: value }))}
               onOpenLessonPlanner={() => setIsLessonPlannerOpen(true)}
+              searchPlaceholder={
+                activeItem === "community" || activeItem === "announcements"
+                  ? "Search community..."
+                  : undefined
+              }
               schoolName={activeProfile.schoolName}
               userName={activeProfile.name}
               userAvatar={activeProfile.avatar ?? null}
@@ -1414,12 +1455,14 @@ export function AppShell({
               onOpenNotification={handleOpenNotification}
             />
 
-            <main className={activeItem === "dashboard" || activeItem === "school-chat" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto"}>
+            <main className={activeItem === "dashboard" || activeItem === "school-chat" || activeItem === "community" || activeItem === "announcements" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto"}>
               <div className={activeItem === "dashboard"
                 ? "mx-auto flex h-full w-full max-w-[1440px] flex-col gap-4 px-4 pt-12 pb-3 md:px-6 md:pt-14 md:pb-4"
                 : activeItem === "school-chat"
                   ? "mx-auto flex h-full w-full max-w-[1440px] flex-col px-4 pt-10 pb-3 md:px-6 md:pt-12 md:pb-4"
-                  : "mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 pt-14 pb-6 md:px-6 md:pt-16 md:pb-8"}>
+                  : activeItem === "community" || activeItem === "announcements"
+                    ? "mx-auto flex h-full w-full max-w-[1440px] flex-col gap-6 px-4 pt-14 pb-6 md:px-6 md:pt-16 md:pb-8"
+                    : "mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 pt-14 pb-6 md:px-6 md:pt-16 md:pb-8"}>
                 {renderWorkspace()}
               </div>
             </main>
