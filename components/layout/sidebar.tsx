@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { BookOpenText, LogOut, PanelLeftClose, PanelLeftOpen, School2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,8 @@ function SidebarInner({
   schoolName?: string | null;
   mobile?: boolean;
 }) {
+  const [isLogOutConfirmOpen, setIsLogOutConfirmOpen] = useState(false);
+
   return (
     <div
       className={cn(
@@ -108,13 +111,50 @@ function SidebarInner({
             variant="outline"
             className="mt-3 h-9 w-full justify-between border-[#F3D1D8] bg-[#FFF5F7] px-3 text-sm font-medium text-[#BE123C] hover:bg-[#FFE4EA] hover:text-[#9F1239]"
             type="button"
-            onClick={onLogOut}
+            onClick={() => setIsLogOutConfirmOpen(true)}
           >
             Log out
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </div>
+
+      {isLogOutConfirmOpen ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+          onClick={() => setIsLogOutConfirmOpen(false)}
+        >
+          <div
+            className="w-full max-w-[360px] rounded-3xl border border-[#E5E7EB] bg-white p-6 shadow-[0_32px_64px_rgba(17,24,39,0.14)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-center text-lg font-semibold text-[#111827]">Log out of TeachShare?</h3>
+            <p className="mt-2 text-center text-sm leading-6 text-[#6B7280]">
+              Are you sure you want to log out?
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-w-[112px] rounded-xl"
+                onClick={() => setIsLogOutConfirmOpen(false)}
+              >
+                No
+              </Button>
+              <Button
+                type="button"
+                className="min-w-[112px] rounded-xl bg-[#BE123C] text-white hover:bg-[#9F1239]"
+                onClick={() => {
+                  setIsLogOutConfirmOpen(false);
+                  onLogOut();
+                }}
+              >
+                Yes
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
