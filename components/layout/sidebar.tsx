@@ -9,6 +9,7 @@ import { NAV_ITEMS, NavigationItemId } from "@/lib/constants";
 interface SidebarProps {
   activeItem: NavigationItemId;
   schoolName?: string | null;
+  hasUnreadSchoolChat?: boolean;
   isCollapsed: boolean;
   isMobileOpen: boolean;
   onNavigate: (id: NavigationItemId) => void;
@@ -19,14 +20,15 @@ interface SidebarProps {
 
 function SidebarNav({
   activeItem,
+  hasUnreadSchoolChat,
   onNavigate,
-}: Pick<SidebarProps, "activeItem" | "onNavigate">) {
+}: Pick<SidebarProps, "activeItem" | "hasUnreadSchoolChat" | "onNavigate">) {
   return (
     <nav className="mt-8 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-4 pb-3">
       {NAV_ITEMS.map((item) => {
         const Icon = item.icon;
         const isActive = activeItem === item.id;
-        const showNewBadge = item.id === "school-chat";
+        const showNewBadge = item.id === "school-chat" && hasUnreadSchoolChat;
 
         return (
           <button
@@ -42,7 +44,7 @@ function SidebarNav({
               <span>{item.label}</span>
             </span>
             {showNewBadge ? (
-              <span className="rounded-full bg-[#EDE9FE] px-2 py-0.5 text-xs font-semibold text-[#6D28D9]">
+              <span className="rounded-full bg-[#DCFCE7] px-2 py-0.5 text-xs font-semibold text-[#15803D] transition-opacity duration-150">
                 New
               </span>
             ) : null}
@@ -55,12 +57,14 @@ function SidebarNav({
 
 function SidebarInner({
   activeItem,
+  hasUnreadSchoolChat,
   onNavigate,
   onLogOut,
   schoolName,
   mobile,
 }: {
   activeItem: NavigationItemId;
+  hasUnreadSchoolChat?: boolean;
   onNavigate: (id: NavigationItemId) => void;
   onLogOut: () => void;
   schoolName?: string | null;
@@ -85,7 +89,7 @@ function SidebarInner({
         </div>
       </div>
 
-      <SidebarNav activeItem={activeItem} onNavigate={onNavigate} />
+      <SidebarNav activeItem={activeItem} hasUnreadSchoolChat={hasUnreadSchoolChat} onNavigate={onNavigate} />
 
       <div className="shrink-0 px-5 pt-3">
         <div className="rounded-2xl border border-[#E5E7EB] bg-white p-3.5 shadow-[0_10px_25px_rgba(17,24,39,0.04)]">
@@ -121,6 +125,7 @@ export function Sidebar(props: SidebarProps) {
       <aside className="hidden h-screen shrink-0 lg:sticky lg:top-0 lg:block">
         <SidebarInner
           activeItem={props.activeItem}
+          hasUnreadSchoolChat={props.hasUnreadSchoolChat}
           schoolName={props.schoolName}
           onNavigate={props.onNavigate}
           onLogOut={props.onLogOut}
@@ -143,6 +148,7 @@ export function Sidebar(props: SidebarProps) {
       >
         <SidebarInner
           activeItem={props.activeItem}
+          hasUnreadSchoolChat={props.hasUnreadSchoolChat}
           schoolName={props.schoolName}
           onNavigate={(id) => {
             props.onNavigate(id);

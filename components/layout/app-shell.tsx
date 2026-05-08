@@ -117,6 +117,7 @@ export function AppShell({
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [workspaceSuccess, setWorkspaceSuccess] = useState<string | null>(null);
   const [notificationsSeenAt, setNotificationsSeenAt] = useState(() => new Date().toISOString());
+  const [schoolChatSeenAt, setSchoolChatSeenAt] = useState(() => new Date().toISOString());
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isInviteTeachersOpen, setIsInviteTeachersOpen] = useState(false);
@@ -499,8 +500,19 @@ export function AppShell({
     return notifications.filter((notification) => new Date(notification.createdAt).getTime() > seenAt).length;
   }, [notifications, notificationsSeenAt]);
 
+  const hasUnreadSchoolChat = useMemo(() => {
+    const seenAt = new Date(schoolChatSeenAt).getTime();
+    return schoolMessages.some(
+      (message) => message.userId !== currentUserId && new Date(message.createdAt).getTime() > seenAt,
+    );
+  }, [currentUserId, schoolChatSeenAt, schoolMessages]);
+
   const handleMarkNotificationsSeen = useCallback(() => {
     setNotificationsSeenAt(new Date().toISOString());
+  }, []);
+
+  const handleMarkSchoolChatSeen = useCallback(() => {
+    setSchoolChatSeenAt(new Date().toISOString());
   }, []);
 
   const handleOpenNotification = useCallback((notification: NotificationItem) => {
@@ -528,6 +540,12 @@ export function AppShell({
       setSelectedResourceId(null);
     }
   }, [activeItem]);
+
+  useEffect(() => {
+    if (activeItem === "school-chat") {
+      handleMarkSchoolChatSeen();
+    }
+  }, [activeItem, handleMarkSchoolChatSeen]);
 
   useEffect(() => {
     setActiveItem(initialActiveItem);
@@ -1453,6 +1471,7 @@ export function AppShell({
           <Sidebar
             activeItem={activeItem}
             schoolName={activeProfile.schoolName}
+            hasUnreadSchoolChat={hasUnreadSchoolChat}
             isCollapsed={false}
             isMobileOpen={isMobileOpen}
             onNavigate={handleSidebarNavigate}
