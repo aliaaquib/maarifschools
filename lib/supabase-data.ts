@@ -1410,7 +1410,15 @@ export function getVisibleResources(
   };
 
   void refresh();
-  return createRealtimeChannel("resources-feed", "resources", refresh);
+  const unsubscribeRealtime = createRealtimeChannel("resources-feed", "resources", refresh);
+  const interval = window.setInterval(() => {
+    void refresh();
+  }, 4000);
+
+  return () => {
+    window.clearInterval(interval);
+    unsubscribeRealtime();
+  };
 }
 
 export async function createResource(input: CreateResourceInput & { userId: string; userName: string; schoolId?: string | null }) {

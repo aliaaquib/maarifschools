@@ -170,10 +170,35 @@ export function AppShell({
   }, [profile, user]);
 
   const currentUserId = user?.id ?? activeProfile.uid;
+  const notificationsSeenStorageKey = useMemo(
+    () => `teachshare-notifications-seen:${currentUserId || "guest"}`,
+    [currentUserId],
+  );
   const schoolConversationStorageKey = useMemo(
     () => (activeProfile.schoolId ? `teachshare-school-conversations:${activeProfile.schoolId}` : ""),
     [activeProfile.schoolId],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const stored = window.localStorage.getItem(notificationsSeenStorageKey);
+    if (!stored) {
+      return;
+    }
+
+    setNotificationsSeenAt(stored);
+  }, [notificationsSeenStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(notificationsSeenStorageKey, notificationsSeenAt);
+  }, [notificationsSeenAt, notificationsSeenStorageKey]);
 
   const loadStoredSchoolConversations = useCallback(() => {
     if (typeof window === "undefined" || !schoolConversationStorageKey) {
