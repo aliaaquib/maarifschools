@@ -344,3 +344,4 @@ using (bucket_id = 'resources')
 with check (bucket_id = 'resources');
 
 notify pgrst, 'reload schema';
+
