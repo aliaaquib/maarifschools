@@ -260,6 +260,18 @@ function normalizeResource(raw: Row): ResourceRecord {
     bookmarks: Array.isArray(raw.bookmarks)
       ? raw.bookmarks.filter((id): id is string => typeof id === "string")
       : [],
+    viewCount:
+      typeof raw.view_count === "number"
+        ? raw.view_count
+        : typeof raw.view_count === "string"
+          ? Number(raw.view_count)
+          : 0,
+    downloadCount:
+      typeof raw.download_count === "number"
+        ? raw.download_count
+        : typeof raw.download_count === "string"
+          ? Number(raw.download_count)
+          : 0,
   };
 }
 
@@ -340,7 +352,7 @@ async function getResourcesByIds(resourceIds: string[]) {
 
   const { data, error } = await supabase
     .from("resources")
-    .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, created_at")
+    .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, view_count, download_count, created_at")
     .in("id", resourceIds)
     .order("created_at", { ascending: false });
 
@@ -1354,7 +1366,7 @@ export function getVisibleResources(
   const refresh = async () => {
     let joinedQuery = supabase
       .from("resources")
-      .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, created_at, users(name, avatar), resource_versions(file_url, storage_path, created_at)")
+      .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, view_count, download_count, created_at, users(name, avatar), resource_versions(file_url, storage_path, created_at)")
       .order("created_at", { ascending: false });
 
     if (schoolId) {
@@ -1372,7 +1384,7 @@ export function getVisibleResources(
 
     let fallbackQuery = supabase
       .from("resources")
-      .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, created_at")
+      .select("id, title, description, user_id, school_id, resource_scope, file_type, tags, file_name, likes, bookmarks, view_count, download_count, created_at")
       .order("created_at", { ascending: false });
 
     if (schoolId) {
@@ -1456,6 +1468,8 @@ export async function createResource(input: CreateResourceInput & { userId: stri
     file_name: input.file?.name ?? null,
     likes: [],
     bookmarks: [],
+    view_count: 0,
+    download_count: 0,
   };
 
   const candidatePayloads = [
@@ -1535,6 +1549,26 @@ export async function toggleResourceReaction(
     : [...currentValues, userId];
 
   const { error } = await supabase.from("resources").update({ [field]: nextValues }).eq("id", resource.id);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function incrementResourceViewCount(resourceId: string) {
+  const { error } = await supabase.rpc("increment_resource_view_count", {
+    target_resource_id: resourceId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function incrementResourceDownloadCount(resourceId: string) {
+  const { error } = await supabase.rpc("increment_resource_download_count", {
+    target_resource_id: resourceId,
+  });
+
   if (error) {
     throw new Error(error.message);
   }

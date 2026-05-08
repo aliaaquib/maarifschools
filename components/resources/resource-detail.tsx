@@ -1,6 +1,6 @@
 "use client";
 
-import { BookMarked, Download, ExternalLink, Eye, FileText, Sparkles, Trash2 } from "lucide-react";
+import { BookMarked, Download, ExternalLink, Eye, FileText, Sparkles, Trash2, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,16 +17,17 @@ interface ResourceDetailProps {
   onDownload?: (resource: ResourceRecord) => void;
   onOpen?: (resource: ResourceRecord) => void;
   onDelete?: (resource: ResourceRecord) => void;
+  onClose?: () => void;
 }
 
-export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, onDelete }: ResourceDetailProps) {
+export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, onDelete, onClose }: ResourceDetailProps) {
   const [topic, setTopic] = useState("");
   const [lessonPlan, setLessonPlan] = useState("");
   const [loadingLesson, setLoadingLesson] = useState(false);
   const [error, setError] = useState("");
   const isOwner = resource && currentUserId ? resource.userId === currentUserId : false;
-  const views = resource?.viewCount ?? (resource ? Math.max(3, resource.likes.length + resource.bookmarks.length + 2) : 0);
-  const downloads = resource?.downloadCount ?? (resource ? Math.max(0, resource.bookmarks.length) : 0);
+  const views = resource?.viewCount ?? 0;
+  const downloads = resource?.downloadCount ?? 0;
   const usedBy = resource ? Math.max(1, new Set([...resource.likes, ...resource.bookmarks]).size) : 0;
 
   function handleDownload() {
@@ -130,117 +131,123 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
   }
 
   if (!resource) {
-    return (
-      <Card className="sticky top-24 hidden h-fit min-w-0 p-6 xl:block">
-        <p className="text-sm font-semibold text-foreground">Resource preview</p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Select a resource from the feed to see more context and quick actions.
-        </p>
-      </Card>
-    );
+    return null;
   }
 
   return (
-    <Card className="sticky top-24 hidden h-fit max-h-[calc(100vh-7rem)] min-w-0 overflow-y-auto animate-fade-up p-6 xl:block">
-      <div className="space-y-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Preview</p>
-          <h3 className="mt-2 text-xl font-semibold text-foreground">{resource.title}</h3>
-        </div>
-
-        {renderPreview()}
-
-        <p className="break-words text-sm leading-6 text-muted-foreground">{resource.description}</p>
-
-        <div className="flex flex-wrap gap-2">
-          <Badge>{resource.resourceScope === "common" ? "Common resource" : "School resource"}</Badge>
-          {resource.tags.map((tag) => (
-            <Badge key={tag}>{tag}</Badge>
-          ))}
-        </div>
-
-        <div className="rounded-2xl border border-border bg-muted p-4">
-          <p className="text-sm font-medium text-foreground">{resource.userName}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Uploaded {formatRelativeDate(resource.createdAt)}
-          </p>
-          <p className="mt-3 text-xs text-muted-foreground">File type: {resource.fileType.toUpperCase()}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Visibility: {resource.resourceScope === "common" ? "Shared with everyone" : "Shared within one school"}
-          </p>
-          <div className="mt-4 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-3">
-            <span className="inline-flex items-center gap-1.5">
-              <Eye className="h-4 w-4" />
-              {views}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Download className="h-4 w-4" />
-              {downloads}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <BookMarked className="h-4 w-4" />
-              {resource.bookmarks.length}
-            </span>
-          </div>
-          <p className="mt-4 text-sm text-foreground">Used by {usedBy} teachers</p>
-        </div>
-
-        <div className="grid gap-2">
-          {resource.fileUrl ? (
-            <>
-              <Button variant="outline" className="w-full justify-start text-left" onClick={handleDownload}>
-                <Download className="h-4 w-4" />
-                Download file
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-left"
-                onClick={() => {
-                  onOpen?.(resource);
-                  window.open(resource.fileUrl, "_blank", "noopener,noreferrer");
-                }}
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open in new tab
-              </Button>
-            </>
-          ) : null}
-          {onDelete && isOwner ? (
-            <Button variant="ghost" className="w-full justify-start text-left" onClick={() => onDelete(resource)}>
-              <Trash2 className="h-4 w-4" />
-              Delete resource
-            </Button>
-          ) : null}
-        </div>
-
-        <form className="space-y-3 rounded-2xl border border-border bg-card p-4" onSubmit={handleGenerateLesson}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-[980px]" onClick={(event) => event.stopPropagation()}>
+      <Card
+        className="relative h-[min(88vh,920px)] w-full overflow-y-auto rounded-[28px] border-[#E5E7EB] bg-white p-6 shadow-[0_32px_64px_rgba(17,24,39,0.14)]"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-5 top-5 rounded-full border border-[#E5E7EB] bg-white p-2 text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#111827]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <div className="space-y-4">
           <div>
-            <p className="text-sm font-medium text-foreground">Generate lesson plan</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Enter a topic to create a classroom-ready lesson outline.
-            </p>
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Resource details</p>
+            <h3 className="mt-2 text-xl font-semibold text-foreground">{resource.title}</h3>
           </div>
-          <Input
-            value={topic}
-            onChange={(event) => setTopic(event.target.value)}
-            placeholder="Enter topic"
-          />
-          {error ? <p className="text-sm text-foreground/80">{error}</p> : null}
-          <Button className="w-full justify-start" disabled={loadingLesson} type="submit">
-            <Sparkles className="h-4 w-4" />
-            {loadingLesson ? "Generating..." : "Generate Lesson Plan"}
-          </Button>
-        </form>
 
-        {lessonPlan ? (
-          <div className="rounded-2xl border border-border bg-muted p-4">
-            <p className="text-sm font-medium text-foreground">Lesson plan</p>
-            <pre className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">
-              {lessonPlan}
-            </pre>
+          {renderPreview()}
+
+          <p className="break-words text-sm leading-6 text-muted-foreground">{resource.description}</p>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge>{resource.resourceScope === "common" ? "Common resource" : "School resource"}</Badge>
+            {resource.tags.map((tag) => (
+              <Badge key={tag}>{tag}</Badge>
+            ))}
           </div>
-        ) : null}
+
+          <div className="rounded-2xl border border-border bg-muted p-4">
+            <p className="text-sm font-medium text-foreground">{resource.userName}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Uploaded {formatRelativeDate(resource.createdAt)}
+            </p>
+            <p className="mt-3 text-xs text-muted-foreground">File type: {resource.fileType.toUpperCase()}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Visibility: {resource.resourceScope === "common" ? "Shared with everyone" : "Shared within one school"}
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-3">
+              <span className="inline-flex items-center gap-1.5">
+                <Eye className="h-4 w-4" />
+                {views}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Download className="h-4 w-4" />
+                {downloads}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <BookMarked className="h-4 w-4" />
+                {resource.bookmarks.length}
+              </span>
+            </div>
+            <p className="mt-4 text-sm text-foreground">Used by {usedBy} teachers</p>
+          </div>
+
+          <div className="grid gap-2">
+            {resource.fileUrl ? (
+              <>
+                <Button variant="outline" className="w-full justify-start text-left" onClick={handleDownload}>
+                  <Download className="h-4 w-4" />
+                  Download file
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-left"
+                  onClick={() => {
+                    onOpen?.(resource);
+                    window.open(resource.fileUrl, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open in new tab
+                </Button>
+              </>
+            ) : null}
+            {onDelete && isOwner ? (
+              <Button variant="ghost" className="w-full justify-start text-left" onClick={() => onDelete(resource)}>
+                <Trash2 className="h-4 w-4" />
+                Delete resource
+              </Button>
+            ) : null}
+          </div>
+
+          <form className="space-y-3 rounded-2xl border border-border bg-card p-4" onSubmit={handleGenerateLesson}>
+            <div>
+              <p className="text-sm font-medium text-foreground">Generate lesson plan</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Enter a topic to create a classroom-ready lesson outline.
+              </p>
+            </div>
+            <Input
+              value={topic}
+              onChange={(event) => setTopic(event.target.value)}
+              placeholder="Enter topic"
+            />
+            {error ? <p className="text-sm text-foreground/80">{error}</p> : null}
+            <Button className="w-full justify-start" disabled={loadingLesson} type="submit">
+              <Sparkles className="h-4 w-4" />
+              {loadingLesson ? "Generating..." : "Generate Lesson Plan"}
+            </Button>
+          </form>
+
+          {lessonPlan ? (
+            <div className="rounded-2xl border border-border bg-muted p-4">
+              <p className="text-sm font-medium text-foreground">Lesson plan</p>
+              <pre className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">
+                {lessonPlan}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      </Card>
       </div>
-    </Card>
+    </div>
   );
 }

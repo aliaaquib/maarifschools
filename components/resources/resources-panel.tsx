@@ -22,6 +22,7 @@ interface ResourcesPanelProps {
   emptyDescription?: string;
   showResourceGrid?: boolean;
   onSelectResource: (resource: ResourceRecord) => void;
+  onCloseResourceDetail?: () => void;
   onLike: (resource: ResourceRecord) => void;
   onBookmark: (resource: ResourceRecord) => void;
   onDownload?: (resource: ResourceRecord) => void;
@@ -42,6 +43,7 @@ export function ResourcesPanel({
   emptyDescription,
   showResourceGrid = true,
   onSelectResource,
+  onCloseResourceDetail,
   onLike,
   onBookmark,
   onDownload,
@@ -49,7 +51,7 @@ export function ResourcesPanel({
   onOpenUpload,
 }: ResourcesPanelProps) {
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <>
       <div className="min-w-0 space-y-8">
         <div className="space-y-2">
           <h2 className="max-w-3xl text-3xl font-semibold text-foreground">{title}</h2>
@@ -154,7 +156,8 @@ export function ResourcesPanel({
         onDownload={onDownload}
         onOpen={onSelectResource}
         onDelete={onDelete}
+        onClose={onCloseResourceDetail}
       />
-    </div>
+    </>
   );
 }

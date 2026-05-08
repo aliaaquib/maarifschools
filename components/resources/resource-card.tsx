@@ -73,8 +73,8 @@ export function ResourceCard({
   const primaryTag = resource.tags[0] ?? "General";
   const secondaryTag = resource.tags[1] ?? resource.fileType.toUpperCase();
   const visibilityLabel = resource.resourceScope === "common" ? "Common" : "School";
-  const views = resource.viewCount ?? Math.max(3, resource.likes.length + resource.bookmarks.length + 2);
-  const downloads = resource.downloadCount ?? Math.max(0, resource.bookmarks.length);
+  const views = resource.viewCount ?? 0;
+  const downloads = resource.downloadCount ?? 0;
   const saves = resource.bookmarks.length;
 
   return (

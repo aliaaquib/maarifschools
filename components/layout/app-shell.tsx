@@ -43,6 +43,8 @@ import {
   getClassResources,
   getComments,
   getAllTeachers,
+  incrementResourceDownloadCount,
+  incrementResourceViewCount,
   getSchoolChatConversationFeed,
   getSchoolTeachers,
   getTeacherClasses,
@@ -357,19 +359,27 @@ export function AppShell({
       return;
     }
 
-    void Promise.all([
+    void Promise.allSettled([
       getClassMembers(selectedClassId),
       getClassPosts(selectedClassId),
       getClassResources(selectedClassId),
-    ])
-      .then(([members, postsForClass, resourcesForClass]) => {
-        setClassMembersById((current) => ({ ...current, [selectedClassId]: members }));
-        setClassPostsById((current) => ({ ...current, [selectedClassId]: postsForClass }));
-        setClassResourcesById((current) => ({ ...current, [selectedClassId]: resourcesForClass }));
-      })
-      .catch((error) => {
-        setWorkspaceError(toUserFacingError(error, "We couldn't load class details right now."));
-      });
+    ]).then(([membersResult, postsResult, resourcesResult]) => {
+      const members = membersResult.status === "fulfilled" ? membersResult.value : [];
+      const postsForClass = postsResult.status === "fulfilled" ? postsResult.value : [];
+      const resourcesForClass = resourcesResult.status === "fulfilled" ? resourcesResult.value : [];
+
+      setClassMembersById((current) => ({ ...current, [selectedClassId]: members }));
+      setClassPostsById((current) => ({ ...current, [selectedClassId]: postsForClass }));
+      setClassResourcesById((current) => ({ ...current, [selectedClassId]: resourcesForClass }));
+
+      const failedResults = [membersResult, postsResult, resourcesResult].filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+
+      if (failedResults.length > 0) {
+        setWorkspaceError("Some class details could not be loaded right now.");
+      }
+    });
   }, [selectedClassId]);
 
   const filteredResources = useMemo(() => {
@@ -429,7 +439,7 @@ export function AppShell({
   );
 
   const myResourceStats = useMemo(() => {
-    const totalDownloads = myResources.reduce((total, resource) => total + (resource.downloadCount ?? Math.max(0, resource.bookmarks.length)), 0);
+    const totalDownloads = myResources.reduce((total, resource) => total + (resource.downloadCount ?? 0), 0);
     const totalSaves = myResources.reduce((total, resource) => total + resource.bookmarks.length, 0);
 
     return [
@@ -703,17 +713,23 @@ export function AppShell({
     setSelectedResourceId(resource.id);
     setResources((current) =>
       current.map((item) =>
-        item.id === resource.id ? { ...item, viewCount: (item.viewCount ?? Math.max(3, item.likes.length + item.bookmarks.length + 2)) + 1 } : item,
+        item.id === resource.id ? { ...item, viewCount: (item.viewCount ?? 0) + 1 } : item,
       ),
     );
+    void incrementResourceViewCount(resource.id).catch(() => undefined);
   }
 
   function handleDownloadResource(resource: ResourceRecord) {
     setResources((current) =>
       current.map((item) =>
-        item.id === resource.id ? { ...item, downloadCount: (item.downloadCount ?? Math.max(0, item.bookmarks.length)) + 1 } : item,
+        item.id === resource.id ? { ...item, downloadCount: (item.downloadCount ?? 0) + 1 } : item,
       ),
     );
+    void incrementResourceDownloadCount(resource.id).catch(() => undefined);
+  }
+
+  function handleCloseResourceDetail() {
+    setSelectedResourceId(null);
   }
 
   async function handleCreatePost(input: { title: string; body: string }) {
@@ -1166,6 +1182,7 @@ export function AppShell({
               hasActiveFilters={Boolean(filters.search || filters.subject || filters.grade)}
               currentUserId={currentUserId}
               selectedResource={selectedResource}
+              onCloseResourceDetail={handleCloseResourceDetail}
               emptyDescription="No resources are available yet. Be the first to upload to your school or the shared library."
               onSelectResource={handleSelectResource}
               onLike={handleToggleLike}
@@ -1186,6 +1203,7 @@ export function AppShell({
             hasActiveFilters={Boolean(filters.search || filters.subject || filters.grade)}
             currentUserId={currentUserId}
             selectedResource={selectedResource}
+            onCloseResourceDetail={handleCloseResourceDetail}
             summaryStats={myResourceStats}
             emptyDescription="You haven’t uploaded any resources yet. Start by sharing your first lesson plan to help other teachers."
             onSelectResource={handleSelectResource}
@@ -1255,6 +1273,7 @@ export function AppShell({
               hasActiveFilters={Boolean(filters.search || filters.subject || filters.grade)}
               currentUserId={currentUserId}
               selectedResource={bookmarkedSelectedResource}
+              onCloseResourceDetail={handleCloseResourceDetail}
               onSelectResource={handleSelectResource}
               onLike={handleToggleLike}
               onBookmark={handleToggleBookmark}
@@ -1369,7 +1388,7 @@ export function AppShell({
                         {recentUploads.length > 0 ? recentUploads.map((resource) => (
                           <button key={resource.id} className="flex w-full items-center justify-between rounded-xl border border-border bg-muted/30 px-3 py-2 text-left" onClick={() => { handleSelectResource(resource); setActiveItem("mine"); }}>
                             <span className="text-sm font-medium text-foreground">{resource.title}</span>
-                            <span className="text-sm text-muted-foreground">{resource.downloadCount ?? Math.max(0, resource.bookmarks.length)} downloads</span>
+                            <span className="text-sm text-muted-foreground">{resource.downloadCount ?? 0} downloads</span>
                           </button>
                         )) : <p className="text-sm text-muted-foreground">No uploads yet.</p>}
                       </div>

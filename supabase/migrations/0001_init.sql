@@ -47,6 +47,8 @@ create table if not exists public.resources (
   tags text[] default '{}'::text[],
   likes uuid[] default '{}'::uuid[],
   bookmarks uuid[] default '{}'::uuid[],
+  view_count integer not null default 0,
+  download_count integer not null default 0,
   created_at timestamp with time zone default now()
 );
 
@@ -304,6 +306,31 @@ grant select, insert, update, delete on public.resource_versions to anon, authen
 grant select, insert, update, delete on public.school_messages to anon, authenticated;
 grant select, insert, update, delete on public.school_chat_rooms to anon, authenticated;
 grant select, insert, update, delete on public.direct_messages to anon, authenticated;
+
+create or replace function public.increment_resource_view_count(target_resource_id uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.resources
+  set view_count = coalesce(view_count, 0) + 1
+  where id = target_resource_id;
+$$;
+
+create or replace function public.increment_resource_download_count(target_resource_id uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.resources
+  set download_count = coalesce(download_count, 0) + 1
+  where id = target_resource_id;
+$$;
+
+grant execute on function public.increment_resource_view_count(uuid) to anon, authenticated;
+grant execute on function public.increment_resource_download_count(uuid) to anon, authenticated;
 
 insert into storage.buckets (id, name, public)
 values ('resources', 'resources', true)
