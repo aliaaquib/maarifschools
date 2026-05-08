@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronDown, MessageCircle, Search, Sparkles, Upload, Users } from "lucide-react";
+import { Bell, MessageCircle, Search, Sparkles, Upload, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
@@ -189,7 +189,6 @@ export function Topbar({
             <p className="text-sm font-semibold text-[#111827]">{userName || "Teacher"}</p>
             <p className="text-sm text-[#6B7280]">Teacher</p>
           </div>
-          <ChevronDown className="h-4 w-4 text-[#6B7280]" />
         </div>
       </div>
     </header>
