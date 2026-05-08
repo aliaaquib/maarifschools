@@ -163,4 +163,5 @@ export interface NotificationItem {
   title: string;
   description: string;
   createdAt: string;
+  targetId?: string;
 }

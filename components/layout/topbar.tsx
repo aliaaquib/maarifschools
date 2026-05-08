@@ -22,6 +22,7 @@ interface TopbarProps {
   notifications: NotificationItem[];
   unreadNotifications: number;
   onMarkNotificationsSeen: () => void;
+  onOpenNotification: (notification: NotificationItem) => void;
 }
 
 export function Topbar({
@@ -34,6 +35,7 @@ export function Topbar({
   notifications,
   unreadNotifications,
   onMarkNotificationsSeen,
+  onOpenNotification,
 }: TopbarProps) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
@@ -101,9 +103,7 @@ export function Topbar({
           >
             <Bell className="h-5 w-5" />
             {unreadNotifications > 0 ? (
-              <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EF4444] px-1 text-[10px] font-semibold text-white">
-                {Math.min(unreadNotifications, 9)}
-              </span>
+              <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-[#22C55E] ring-2 ring-white" />
             ) : null}
           </button>
 
@@ -118,9 +118,14 @@ export function Topbar({
               <div className="max-h-[360px] overflow-y-auto p-2">
                 {notifications.length > 0 ? (
                   notifications.map((notification) => (
-                    <div
+                    <button
                       key={notification.id}
-                      className="flex gap-3 rounded-2xl px-3 py-3 transition-colors duration-150 hover:bg-[#F9FAFB]"
+                      type="button"
+                      onClick={() => {
+                        onOpenNotification(notification);
+                        setIsNotificationsOpen(false);
+                      }}
+                      className="flex w-full gap-3 rounded-2xl px-3 py-3 text-left transition-colors duration-150 hover:bg-[#F9FAFB]"
                     >
                       <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F5F3FF] text-[#6D28D9]">
                         {getNotificationIcon(notification.type)}
@@ -136,7 +141,7 @@ export function Topbar({
                           {notification.description}
                         </p>
                       </div>
-                    </div>
+                    </button>
                   ))
                 ) : (
                   <div className="px-3 py-8 text-center">

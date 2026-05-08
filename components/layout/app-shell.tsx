@@ -457,6 +457,7 @@ export function AppShell({
         title: `${resource.userName} uploaded a new resource`,
         description: resource.title,
         createdAt: resource.createdAt,
+        targetId: resource.id,
       }));
 
     const postNotifications = posts
@@ -467,6 +468,7 @@ export function AppShell({
         title: `${post.userName} started a discussion`,
         description: post.content,
         createdAt: post.createdAt,
+        targetId: post.id,
       }));
 
     const commentNotifications = comments
@@ -477,6 +479,7 @@ export function AppShell({
         title: `${comment.userName} replied in community`,
         description: comment.content,
         createdAt: comment.createdAt,
+        targetId: comment.postId,
       }));
 
     const schoolNotifications = schoolMessages
@@ -487,6 +490,7 @@ export function AppShell({
         title: `${message.userName} posted in school chat`,
         description: message.content,
         createdAt: message.createdAt,
+        targetId: message.room,
       }));
 
     return [
@@ -507,6 +511,26 @@ export function AppShell({
   const handleMarkNotificationsSeen = useCallback(() => {
     setNotificationsSeenAt(new Date().toISOString());
   }, []);
+
+  const handleOpenNotification = useCallback((notification: NotificationItem) => {
+    handleMarkNotificationsSeen();
+
+    if (notification.type === "resource" && notification.targetId) {
+      const resource = resources.find((item) => item.id === notification.targetId);
+      if (resource) {
+        handleSelectResource(resource);
+      }
+      setActiveItem("all");
+      return;
+    }
+
+    if (notification.type === "school-message") {
+      setActiveItem("school-chat");
+      return;
+    }
+
+    setActiveItem("community");
+  }, [handleMarkNotificationsSeen, resources]);
 
   useEffect(() => {
     if (activeItem === "bookmarks") {
@@ -1436,6 +1460,7 @@ export function AppShell({
               notifications={notifications}
               unreadNotifications={unreadNotifications}
               onMarkNotificationsSeen={handleMarkNotificationsSeen}
+              onOpenNotification={handleOpenNotification}
             />
 
             <main className={activeItem === "dashboard" || activeItem === "school-chat" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto"}>
