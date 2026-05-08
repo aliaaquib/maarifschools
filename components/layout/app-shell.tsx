@@ -1124,6 +1124,7 @@ export function AppShell({
               setActiveItem("all");
             }}
             onOpenMyClasses={handleBackToClasses}
+            onOpenStudents={handleBackToClasses}
             onCreateClass={() => router.push("/app/classes?create=1")}
             onInviteStudents={handleInviteStudents}
             onOpenClass={handleOpenClass}

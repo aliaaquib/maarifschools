@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowRight, BookOpen, Flame, FolderOpen, MessageCircle, School2, Upload, Users } from "lucide-react";
+import { ArrowRight, BookOpen, Flame, MessageCircle, School2, Upload, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,6 +21,7 @@ interface DashboardOverviewProps {
   onExploreResources: () => void;
   onSelectResource: (resource: ResourceRecord) => void;
   onOpenMyClasses: () => void;
+  onOpenStudents: () => void;
   onCreateClass: () => void;
   onInviteStudents: (classId: string) => void;
   onOpenClass: (classId: string) => void;
@@ -67,6 +68,7 @@ export function DashboardOverview({
   onExploreResources,
   onSelectResource,
   onOpenMyClasses,
+  onOpenStudents,
   onCreateClass,
   onInviteStudents,
   onOpenClass,
@@ -75,12 +77,16 @@ export function DashboardOverview({
   const greetingName = profile.name.split(" ")[0] || "Teacher";
   const schoolName = profile.schoolName || "Maarif International School";
   const schoolResources = resources.filter((resource) => resource.resourceScope === "school");
+  const totalStudents = classes.reduce((total, classItem) => total + classItem.studentCount, 0);
   const newResourcesToday = schoolResources.filter((resource) => {
     const created = new Date(resource.createdAt);
     const now = new Date();
     return created.toDateString() === now.toDateString();
   }).length;
   const highlightedPost = posts[0] ?? null;
+  const highlightedReplies = highlightedPost
+    ? comments.filter((comment) => comment.postId === highlightedPost.id).length
+    : 0;
 
   return (
     <div className="grid h-full gap-5 xl:grid-cols-[minmax(0,2fr)_320px]">
@@ -119,14 +125,18 @@ export function DashboardOverview({
           <Card className="min-h-[148px] rounded-[12px] border-[#E5E7EB] bg-white p-5 shadow-[0_4px_16px_rgba(17,24,39,0.03)] hover:-translate-y-[2px] hover:shadow-[0_8px_22px_rgba(17,24,39,0.05)]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#6D28D9]">
-                <FolderOpen className="h-5 w-5" />
+                <Users className="h-5 w-5" />
               </div>
-              <p className="text-xs font-medium uppercase tracking-[0.02em] text-[#6B7280]">My Resources</p>
+              <p className="text-xs font-medium uppercase tracking-[0.02em] text-[#6B7280]">Total Students</p>
             </div>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#111827]">{myResources.length}</p>
-            <p className="mt-2.5 text-sm text-[#6B7280]">Resources uploaded by you</p>
-            <button className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#6D28D9]">
-              View all my resources <ArrowRight className="h-4 w-4" />
+            <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#111827]">{totalStudents}</p>
+            <p className="mt-2.5 text-sm text-[#6B7280]">Students across the classes you manage</p>
+            <button
+              type="button"
+              onClick={onOpenStudents}
+              className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#6D28D9]"
+            >
+              View all my students <ArrowRight className="h-4 w-4" />
             </button>
           </Card>
 
@@ -139,7 +149,11 @@ export function DashboardOverview({
             </div>
             <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#111827]">{newResourcesToday}</p>
             <p className="mt-2.5 text-sm text-[#6B7280]">New resources added today</p>
-            <button className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#6D28D9]">
+            <button
+              type="button"
+              onClick={onExploreResources}
+              className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#6D28D9]"
+            >
               View school resources <ArrowRight className="h-4 w-4" />
             </button>
           </Card>
@@ -152,14 +166,22 @@ export function DashboardOverview({
               <p className="text-xs font-medium uppercase tracking-[0.02em] text-[#6B7280]">Community Highlights</p>
             </div>
             <p className="mt-2 line-clamp-2 text-[24px] font-semibold leading-7 tracking-[-0.03em] text-[#111827]">
-              {highlightedPost?.content || "How to teach HTML effectively?"}
+              {highlightedPost?.content || "No discussions yet"}
             </p>
             <p className="mt-2.5 text-sm text-[#6B7280]">
-              {comments.filter((comment) => comment.postId === highlightedPost?.id).length || 8} replies • Trending discussion
+              {highlightedPost
+                ? `${highlightedReplies} ${highlightedReplies === 1 ? "reply" : "replies"} • Latest discussion`
+                : "Start a discussion to see the latest community highlight here."}
             </p>
-            <button className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#6D28D9]">
-              View discussion <ArrowRight className="h-4 w-4" />
-            </button>
+            {highlightedPost ? (
+              <button
+                type="button"
+                onClick={onStartDiscussion}
+                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#6D28D9]"
+              >
+                View discussion <ArrowRight className="h-4 w-4" />
+              </button>
+            ) : null}
           </Card>
 
         </div>

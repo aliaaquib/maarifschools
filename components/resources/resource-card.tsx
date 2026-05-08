@@ -93,7 +93,12 @@ export function ResourceCard({
         </button>
 
         {onDelete && isOwner ? (
-          <Button variant="ghost" size="sm" className="shrink-0" onClick={onDelete}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 border border-[#F3D1D8] bg-[#FFF5F7] text-[#BE123C] hover:bg-[#FFE4EA] hover:text-[#9F1239]"
+            onClick={onDelete}
+          >
             Delete
           </Button>
         ) : null}
