@@ -127,7 +127,7 @@ export function Topbar({
                       }}
                       className="flex w-full gap-3 rounded-2xl px-3 py-3 text-left transition-colors duration-150 hover:bg-[#F9FAFB]"
                     >
-                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F5F3FF] text-[#6D28D9]">
+                      <div className="bg-app-accent-soft text-app-accent mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
                         {getNotificationIcon(notification.type)}
                       </div>
                       <div className="min-w-0 flex-1">

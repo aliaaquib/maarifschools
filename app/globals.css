@@ -12,6 +12,8 @@
   --ring: 17 17 17;
   --success: 22 163 74;
   --error: 220 38 38;
+  --accent-rgb: 109 40 217;
+  --accent-soft-rgb: 245 243 255;
 }
 
 .dark {
@@ -24,6 +26,16 @@
   --ring: 245 245 245;
   --success: 74 222 128;
   --error: 248 113 113;
+}
+
+:root[data-accent="blue"] {
+  --accent-rgb: 37 99 235;
+  --accent-soft-rgb: 239 246 255;
+}
+
+:root[data-accent="green"] {
+  --accent-rgb: 5 150 105;
+  --accent-soft-rgb: 236 253 245;
 }
 
 * {
@@ -95,4 +107,20 @@ select {
 
 .animate-scale-in {
   animation: scale-in 180ms ease-out;
+}
+
+.bg-app-accent {
+  background-color: rgb(var(--accent-rgb));
+}
+
+.bg-app-accent-soft {
+  background-color: rgb(var(--accent-soft-rgb));
+}
+
+.text-app-accent {
+  color: rgb(var(--accent-rgb));
+}
+
+.border-app-accent {
+  border-color: rgb(var(--accent-rgb));
 }

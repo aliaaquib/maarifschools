@@ -37,7 +37,7 @@ function SidebarNav({
             onClick={() => onNavigate(item.id)}
             className={cn(
               "flex h-10 items-center justify-between rounded-2xl px-3.5 text-sm text-[#4B5563] transition-all duration-150 hover:-translate-y-[1px] hover:bg-[#F9FAFB] hover:text-[#111827]",
-              isActive && "bg-[#F5F3FF] font-semibold text-[#6D28D9]",
+              isActive && "bg-app-accent-soft text-app-accent font-semibold",
             )}
           >
             <span className="flex items-center gap-3">
@@ -82,7 +82,7 @@ function SidebarInner({
     >
       <div className="px-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#6D28D9] text-white shadow-sm">
+          <div className="bg-app-accent flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-sm">
             <BookOpenText className="h-6 w-6" />
           </div>
           <div>
@@ -97,7 +97,7 @@ function SidebarInner({
       <div className="shrink-0 px-5 pt-3">
         <div className="rounded-2xl border border-[#E5E7EB] bg-white p-3.5 shadow-[0_10px_25px_rgba(17,24,39,0.04)]">
           <div className="mt-3 flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F5F3FF] text-[#6D28D9]">
+            <div className="bg-app-accent-soft text-app-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
               <School2 className="h-4.5 w-4.5" />
             </div>
             <p className="whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.14em] text-[#9CA3AF]">

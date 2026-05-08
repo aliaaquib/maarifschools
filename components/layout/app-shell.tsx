@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Plus, UserRound } from "lucide-react";
+import { ArrowUpRight, Plus } from "lucide-react";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { ClassesWorkspace } from "@/components/classes/classes-workspace";
@@ -11,6 +11,7 @@ import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { InviteTeachersModal } from "@/components/invite/invite-teachers-modal";
 import { LessonPlannerModal } from "@/components/lesson-planner/lesson-planner-modal";
 import { Sidebar } from "@/components/layout/sidebar";
+import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { SchoolChatPanel } from "@/components/school-chat/school-chat-panel";
 import { UploadModal } from "@/components/resources/upload-modal";
 import { Topbar } from "@/components/layout/topbar";
@@ -18,12 +19,10 @@ import { ResourcesPanel } from "@/components/resources/resources-panel";
 import { SearchBar } from "@/components/resources/search-bar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Toast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useSidebar } from "@/hooks/use-sidebar";
-import { GRADE_OPTIONS, NAV_ITEMS, NavigationItemId, SUBJECT_OPTIONS } from "@/lib/constants";
+import { NAV_ITEMS, NavigationItemId } from "@/lib/constants";
 import { toUserFacingError } from "@/lib/errors";
 import {
   createComment,
@@ -203,6 +202,28 @@ export function AppShell({
 
     window.localStorage.setItem(notificationsSeenStorageKey, notificationsSeenAt);
   }, [notificationsSeenAt, notificationsSeenStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    let accent = "purple";
+
+    try {
+      const raw = window.localStorage.getItem(`teachshare-settings:${currentUserId || "guest"}`);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { appearance?: { accent?: string } };
+        if (parsed.appearance?.accent === "blue" || parsed.appearance?.accent === "green") {
+          accent = parsed.appearance.accent;
+        }
+      }
+    } catch {
+      accent = "purple";
+    }
+
+    document.documentElement.setAttribute("data-accent", accent);
+  }, [currentUserId]);
 
   const loadStoredSchoolConversations = useCallback(() => {
     if (typeof window === "undefined" || !schoolConversationStorageKey) {
@@ -1302,184 +1323,32 @@ export function AppShell({
         );
       case "settings":
         return (
-          <div className="max-w-5xl space-y-8">
-            <Card className="p-8">
-              <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-                <div className="space-y-3">
-                  <p className="text-sm text-[#6B7280]">Settings</p>
-                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
-                    {profileForm.avatar ? (
-                      <img src={profileForm.avatar} alt={activeProfile.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <UserRound className="h-8 w-8 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div>
-                    <h2 className="text-3xl font-semibold text-foreground">{activeProfile.name}</h2>
-                    <p className="mt-1 text-sm font-normal text-muted-foreground">{activeProfile.email}</p>
-                    <div className="mt-3 inline-flex rounded-full border border-border bg-muted px-3 py-1 text-sm text-foreground">
-                      {contributorLevel}
-                    </div>
-                  </div>
-                </div>
-
-                {user && isAuthRequired ? (
-                  <Button variant="outline" onClick={() => void logOut()}>
-                    Sign out
-                  </Button>
-                ) : null}
-              </div>
-
-              <div className="mt-8 grid gap-4 md:grid-cols-3">
-                <Card className="p-4">
-                  <p className="text-sm font-normal text-muted-foreground">Uploads</p>
-                  <p className="mt-3 text-3xl font-semibold text-foreground">{myResources.length}</p>
-                </Card>
-                <Card className="p-4">
-                  <p className="text-sm font-normal text-muted-foreground">Bookmarks</p>
-                  <p className="mt-3 text-3xl font-semibold text-foreground">{bookmarkedResources.length}</p>
-                </Card>
-                <Card className="p-4">
-                  <p className="text-sm font-normal text-muted-foreground">Posts</p>
-                  <p className="mt-3 text-3xl font-semibold text-foreground">
-                    {posts.filter((post) => post.userId === currentUserId).length}
-                  </p>
-                </Card>
-              </div>
-
-              <div className="mt-8 grid gap-4 md:grid-cols-2">
-                <Card className="p-6">
-                  <p className="text-sm font-semibold text-foreground">Identity</p>
-                  <div className="mt-5 space-y-3 text-sm">
-                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Name</span><span>{activeProfile.name}</span></div>
-                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Email</span><span>{activeProfile.email}</span></div>
-                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">School</span><span>{activeProfile.schoolName || "Not linked yet"}</span></div>
-                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Subject</span><span>{profileForm.subject || "Not set"}</span></div>
-                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Grade</span><span>{profileForm.grade || "Not set"}</span></div>
-                  </div>
-                </Card>
-
-                <Card className="p-6">
-                  <p className="text-sm font-semibold text-foreground">Workspace rules</p>
-                  <div className="mt-5 space-y-4 text-sm text-muted-foreground">
-                    <div>
-                      <p className="font-medium text-foreground">School visibility</p>
-                      <p className="mt-1">School resources are limited to teachers in the same school.</p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">Common library</p>
-                      <p className="mt-1">Common resources can be discovered across every connected school.</p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">Discussion space</p>
-                      <p className="mt-1">Community discussions stay global so teachers can learn from every school.</p>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              <div className="mt-8 grid gap-4 md:grid-cols-2">
-                <Card className="p-6">
-                  <p className="text-sm font-semibold text-foreground">Activity</p>
-                  <div className="mt-5 space-y-4">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Recent uploads</p>
-                      <div className="mt-3 space-y-2">
-                        {recentUploads.length > 0 ? recentUploads.map((resource) => (
-                          <button key={resource.id} className="flex w-full items-center justify-between rounded-xl border border-border bg-muted/30 px-3 py-2 text-left" onClick={() => { handleSelectResource(resource); setActiveItem("mine"); }}>
-                            <span className="text-sm font-medium text-foreground">{resource.title}</span>
-                            <span className="text-sm text-muted-foreground">{resource.downloadCount ?? 0} downloads</span>
-                          </button>
-                        )) : <p className="text-sm text-muted-foreground">No uploads yet.</p>}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Recent posts</p>
-                      <div className="mt-3 space-y-2">
-                        {recentPosts.length > 0 ? recentPosts.map((post) => (
-                          <button key={post.id} className="w-full rounded-xl border border-border bg-muted/30 px-3 py-2 text-left" onClick={() => setActiveItem("community")}>
-                            <p className="line-clamp-2 text-sm font-medium text-foreground">{post.content}</p>
-                          </button>
-                        )) : <p className="text-sm text-muted-foreground">No posts yet.</p>}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="p-6">
-                  <p className="text-sm font-semibold text-foreground">Profile settings</p>
-                  <p className="mt-1 text-sm font-normal text-muted-foreground">
-                    Keep your subject and grade up to date so colleagues know what you teach.
-                  </p>
-
-                  <div className="mt-5 grid gap-4">
-                    <div className="space-y-2">
-                      <p className="text-sm font-normal text-muted-foreground">Profile photo</p>
-                      <div className="flex items-center gap-3">
-                        <label className="inline-flex cursor-pointer">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(event) => void handleAvatarChange(event.target.files?.[0] ?? null)}
-                          />
-                          <span className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-card px-4 text-sm text-foreground transition hover:bg-muted">
-                            {uploadingAvatar ? "Uploading..." : "Upload photo"}
-                          </span>
-                        </label>
-                        {profileForm.avatar ? (
-                          <button
-                            type="button"
-                            className="text-sm text-muted-foreground underline underline-offset-4"
-                            onClick={() => setProfileForm((current) => ({ ...current, avatar: "" }))}
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                    <Input
-                      value={profileForm.name}
-                      onChange={(event) =>
-                        setProfileForm((current) => ({ ...current, name: event.target.value }))
-                      }
-                      placeholder="Full name"
-                    />
-                    <Select
-                      value={profileForm.subject}
-                      onChange={(event) =>
-                        setProfileForm((current) => ({ ...current, subject: event.target.value }))
-                      }
-                      options={SUBJECT_OPTIONS}
-                      placeholder="Select subject"
-                    />
-                    <Select
-                      value={profileForm.grade}
-                      onChange={(event) =>
-                        setProfileForm((current) => ({ ...current, grade: event.target.value }))
-                      }
-                      options={GRADE_OPTIONS}
-                      placeholder="Select grade"
-                    />
-                  </div>
-
-                  {profileMessage ? <p className="mt-4 text-sm font-normal text-muted-foreground">{profileMessage}</p> : null}
-                  {profileError ? <p className="mt-4 text-sm font-normal text-foreground/80">{profileError}</p> : null}
-
-                  <div className="mt-5">
-                    <Button
-                      disabled={savingProfile}
-                      loading={savingProfile}
-                      loadingText="Saving..."
-                      onClick={() => void handleProfileSave()}
-                    >
-                      Save settings
-                    </Button>
-                  </div>
-                </Card>
-              </div>
-            </Card>
-          </div>
+          <SettingsWorkspace
+            profile={activeProfile}
+            profileForm={profileForm}
+            setProfileForm={setProfileForm}
+            savingProfile={savingProfile}
+            uploadingAvatar={uploadingAvatar}
+            profileMessage={profileMessage}
+            profileError={profileError}
+            contributorLevel={contributorLevel}
+            uploadsCount={myResources.length}
+            bookmarksCount={bookmarkedResources.length}
+            postsCount={posts.filter((post) => post.userId === currentUserId).length}
+            totalStudents={classes.reduce((total, currentClass) => total + currentClass.studentCount, 0)}
+            classes={classes}
+            schoolTeachers={schoolTeachers}
+            recentUploads={recentUploads}
+            recentPosts={recentPosts}
+            onAvatarUpload={handleAvatarChange}
+            onSaveProfile={handleProfileSave}
+            onLogOut={logOut}
+            onOpenResource={(resource) => {
+              handleSelectResource(resource);
+              setActiveItem("mine");
+            }}
+            onOpenCommunity={() => setActiveItem("community")}
+          />
         );
       default:
         return null;
