@@ -42,7 +42,7 @@ export const NAV_ITEMS = [
   { id: "all", label: "Resources", icon: LayoutGrid },
   { id: "mine", label: "My Resources", icon: FolderKanban },
   { id: "community", label: "Community", icon: BookOpenText },
-  { id: "announcements", label: "Announcement", icon: Megaphone },
+  { id: "announcements", label: "Announcements", icon: Megaphone },
   { id: "school-chat", label: "School Chat", icon: School },
   { id: "bookmarks", label: "Bookmarks", icon: BookMarked },
   { id: "settings", label: "Settings", icon: Settings },

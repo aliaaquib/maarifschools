@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, Plus } from "lucide-react";
 
+import { AnnouncementsPanel } from "@/components/announcements/announcements-panel";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { ClassesWorkspace } from "@/components/classes/classes-workspace";
 import { CommunityPanel } from "@/components/community/community-panel";
@@ -1287,26 +1288,17 @@ export function AppShell({
         );
       case "announcements":
         return (
-          <CommunityPanel
-            title="Announcements"
-            description="Keep up with important teacher updates, school notices, and community-wide reminders."
+          <AnnouncementsPanel
             posts={posts}
-            comments={comments}
             loading={loadingCommunity}
             currentUserId={currentUserId}
             currentUserName={activeProfile.name}
             currentUserAvatar={activeProfile.avatar ?? null}
             schoolTeachers={schoolTeachers}
-            resources={resources}
-            resourceCount={resources.length}
             searchQuery={filters.search}
-            initialCategory="announcements"
             onCreatePost={handleCreatePost}
-            onCreateComment={handleCreateComment}
-            onTogglePostLike={handleTogglePostLike}
             onTogglePostBookmark={handleTogglePostBookmark}
             onDeletePost={handleDeletePost}
-            onDeleteComment={handleDeleteComment}
           />
         );
       case "bookmarks":
@@ -1440,9 +1432,11 @@ export function AppShell({
               onSearchChange={(value) => setFilters((current) => ({ ...current, search: value }))}
               onOpenLessonPlanner={() => setIsLessonPlannerOpen(true)}
               searchPlaceholder={
-                activeItem === "community" || activeItem === "announcements"
+                activeItem === "community"
                   ? "Search community..."
-                  : undefined
+                  : activeItem === "announcements"
+                    ? "Search announcements..."
+                    : undefined
               }
               schoolName={activeProfile.schoolName}
               userName={activeProfile.name}

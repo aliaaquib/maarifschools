@@ -79,17 +79,17 @@ export function Topbar({
   }
 
   return (
-    <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-[#E5E7EB] bg-white px-4 py-3 md:px-6">
+    <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-[#E5E7EB] bg-white px-4 py-2.5 md:px-6">
       <SidebarMobileTrigger isOpen={isMobileSidebarOpen} onToggle={onToggleMobileSidebar} />
 
-      <div className="mx-auto flex max-w-[520px] flex-1 items-center xl:ml-0 xl:mr-auto">
+      <div className="mx-auto flex max-w-[500px] flex-1 items-center xl:ml-0 xl:mr-auto">
         <div className="relative w-full">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
           <Input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder={searchPlaceholder}
-            className="h-10 rounded-2xl border-[#E5E7EB] bg-[#F9FAFB] pl-11 pr-20 text-[#111827] placeholder:text-[#9CA3AF] focus:ring-[#6D28D9]/10"
+            className="h-9 rounded-2xl border-[#E5E7EB] bg-[#F9FAFB] pl-11 pr-20 text-[14px] text-[#111827] placeholder:text-[#9CA3AF] focus:ring-[#6D28D9]/10"
           />
           <div className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-2.5 py-1 text-xs font-medium text-[#6B7280] md:flex">
             <span className="text-sm">⌘</span>
@@ -101,7 +101,7 @@ export function Topbar({
       <div className="ml-auto flex items-center gap-2 md:gap-3">
         <Button
           variant="outline"
-          className="hidden h-10 rounded-2xl border-[#E5E7EB] bg-white px-4 text-[#111827] hover:bg-[#F9FAFB] md:inline-flex"
+          className="hidden h-9 rounded-2xl border-[#E5E7EB] bg-white px-4 text-[14px] text-[#111827] hover:bg-[#F9FAFB] md:inline-flex"
           onClick={onOpenLessonPlanner}
         >
           <Sparkles className="mr-2 h-4 w-4" />
@@ -110,7 +110,7 @@ export function Topbar({
 
         <div className="relative" ref={notificationsRef}>
           <button
-            className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#111827] transition-all duration-150 hover:bg-[#F3F4F6]"
+            className="relative flex h-[34px] w-[34px] items-center justify-center rounded-full bg-white text-[#111827] transition-all duration-150 hover:bg-[#F3F4F6]"
             onClick={() => setIsNotificationsOpen((value) => !value)}
             aria-label="Open notifications"
           >
@@ -172,15 +172,15 @@ export function Topbar({
         <Button
           variant="outline"
           size="icon"
-          className="h-9 w-9 rounded-full border-[#E5E7EB] bg-white text-[#111827] hover:bg-[#F9FAFB] md:hidden"
+          className="h-[34px] w-[34px] rounded-full border-[#E5E7EB] bg-white text-[#111827] hover:bg-[#F9FAFB] md:hidden"
           onClick={onOpenLessonPlanner}
           aria-label="Generate lesson plan"
         >
           <Sparkles className="h-4 w-4" />
         </Button>
 
-        <div className="hidden items-center gap-3 rounded-full pl-1 pr-1 md:flex">
-          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#111827] text-sm font-semibold text-white">
+        <div className="hidden items-center gap-2.5 rounded-full pl-1 pr-1 md:flex">
+          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#111827] text-sm font-semibold text-white">
             {userAvatar ? (
               <img src={userAvatar} alt={userName ?? "Teacher"} className="h-full w-full object-cover" />
             ) : (
@@ -189,7 +189,7 @@ export function Topbar({
           </div>
           <div className="leading-tight">
             <p className="text-sm font-semibold text-[#111827]">{userName || "Teacher"}</p>
-            <p className="text-sm text-[#6B7280]">Teacher</p>
+            <p className="text-[13px] text-[#6B7280]">Teacher</p>
           </div>
         </div>
       </div>
