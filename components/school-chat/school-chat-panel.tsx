@@ -38,7 +38,6 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { DEFAULT_SCHOOL_CHAT_ROOMS } from "@/lib/constants";
 import { toUserFacingError } from "@/lib/errors";
 import { SchoolChatConversation, SchoolMessage, SchoolTeacher } from "@/types";
 import { formatRelativeDate, initials } from "@/lib/utils";
@@ -359,11 +358,6 @@ function AttachmentCard({
 }
 
 function getConversationTone(conversation: SchoolChatConversation, index: number) {
-  const preset = DEFAULT_SCHOOL_CHAT_ROOMS.find((room) => room.id === conversation.id);
-  if (preset) {
-    return preset.tone;
-  }
-
   if (conversation.type === "direct") {
     return "bg-[#EFF6FF] text-[#2563EB]";
   }
@@ -379,19 +373,6 @@ function getConversationTone(conversation: SchoolChatConversation, index: number
 }
 
 function getConversationDescription(conversation: SchoolChatConversation) {
-  const preset = DEFAULT_SCHOOL_CHAT_ROOMS.find((room) => room.id === conversation.id);
-  if (preset) {
-    if (conversation.id === "general") {
-      return "Whole-school announcements, coordination, and day-to-day communication.";
-    }
-    if (conversation.id === "grade-3") {
-      return "Planning, worksheets, and class updates for Grade 3 teachers.";
-    }
-    if (conversation.id === "science") {
-      return "Experiments, lab ideas, and science department collaboration.";
-    }
-  }
-
   return conversation.type === "direct"
     ? "Private teacher-to-teacher conversation."
     : "Custom school conversation for focused collaboration.";
@@ -415,7 +396,7 @@ export function SchoolChatPanel({
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [chatSearch, setChatSearch] = useState("");
-  const [activeRoom, setActiveRoom] = useState<SchoolMessage["room"]>("general");
+  const [activeRoom, setActiveRoom] = useState<SchoolMessage["room"]>("");
   const [activeFilter, setActiveFilter] = useState<ChatListFilter>("all");
   const [showPinnedMessage, setShowPinnedMessage] = useState(true);
   const [isCreateConversationOpen, setIsCreateConversationOpen] = useState(false);
@@ -482,9 +463,7 @@ export function SchoolChatPanel({
       return {
         ...conversation,
         tone: getConversationTone(conversation, index),
-        fallbackPreview:
-          DEFAULT_SCHOOL_CHAT_ROOMS.find((room) => room.id === conversation.id)?.fallbackPreview ??
-          (conversation.type === "direct" ? "Start a private conversation" : "Start the group conversation"),
+        fallbackPreview: conversation.type === "direct" ? "Start a private conversation" : "Start the group conversation",
         latestMessage,
         unreadCount,
         members: conversation.memberIds.length || Array.from(new Set(roomMessages.map((message) => message.userId))).length,
@@ -604,14 +583,12 @@ export function SchoolChatPanel({
     () => new Map(teachers.map((teacher) => [teacher.id, teacher])),
     [teachers],
   );
-  const isDefaultConversation = Boolean(
-    activeRoomMeta && DEFAULT_SCHOOL_CHAT_ROOMS.some((room) => room.id === activeRoomMeta.id),
-  );
   const canDeleteConversation = Boolean(
     activeRoomMeta &&
-      activeRoomMeta.type === "group" &&
-      !isDefaultConversation &&
-      activeRoomMeta.createdBy === currentUserId,
+      (
+        (activeRoomMeta.type === "group" && activeRoomMeta.createdBy === currentUserId) ||
+        (activeRoomMeta.type === "direct" && activeRoomMeta.memberIds.includes(currentUserId))
+      ),
   );
 
   const activeMembers = useMemo(() => {
@@ -759,6 +736,11 @@ export function SchoolChatPanel({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!activeRoom) {
+      setError("Create a room first to start messaging.");
+      return;
+    }
+
     const content = draft.trim();
 
     if (!content && !selectedFile) {
@@ -1058,8 +1040,16 @@ export function SchoolChatPanel({
           <div className="border-b border-[#E5E7EB] bg-white px-6 py-4">
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
-                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${activeRoomMeta.tone}`}>
-                  <Users className="h-4.5 w-4.5" />
+                <div
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                    activeRoomMeta?.tone ?? "bg-[#F5F3FF] text-[#6D28D9]"
+                  }`}
+                >
+                  {activeRoomMeta?.type === "direct" ? (
+                    <UserRound className="h-4.5 w-4.5" />
+                  ) : (
+                    <Users className="h-4.5 w-4.5" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <h3 className="truncate text-lg font-semibold text-[#111827]">{activeRoomMeta?.name ?? "Conversation"}</h3>
@@ -1105,9 +1095,12 @@ export function SchoolChatPanel({
                       ...(canDeleteConversation
                         ? [
                             {
-                              label: "Delete Group",
+                              label: activeRoomMeta?.type === "direct" ? "Delete Chat" : "Delete Group",
                               action: async () => {
                                 setIsMenuOpen(false);
+                                if (!activeRoomMeta) {
+                                  return;
+                                }
                                 await onDeleteConversation(activeRoomMeta.id);
                               },
                             },
@@ -1204,10 +1197,10 @@ export function SchoolChatPanel({
                   </div>
                   <div>
                     <p className="text-sm font-medium text-[#111827]">
-                      Welcome to the general chat! Please keep discussions respectful.
+                      Keep conversations focused and respectful in this room.
                     </p>
                     <p className="mt-1 text-xs text-[#6B7280]">
-                      Pinned for all teachers in this room
+                      Pinned for everyone in this conversation
                     </p>
                   </div>
                 </div>
@@ -1230,6 +1223,18 @@ export function SchoolChatPanel({
                     <div key={index} className="h-20 rounded-2xl bg-white/80" />
                   ))}
                 </div>
+              ) : !activeRoomMeta ? (
+                <EmptyState
+                  icon={MessageSquareMore}
+                  title="No chat rooms yet"
+                  description="Create your first room or direct message from the plus button to start collaborating."
+                  action={
+                    <Button onClick={() => setIsCreateConversationOpen(true)}>
+                      <Plus className="h-4 w-4" />
+                      Create room
+                    </Button>
+                  }
+                />
               ) : groupedMessages.length === 0 ? (
                 <EmptyState
                   icon={MessageSquareMore}
@@ -1444,6 +1449,7 @@ export function SchoolChatPanel({
                     onChange={(event) => setDraft(event.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={`Message ${activeRoomMeta?.name ?? "conversation"}`}
+                    disabled={!activeRoomMeta}
                     className="min-h-[44px] flex-1 resize-none border-0 bg-transparent px-0 py-1 shadow-none focus-visible:ring-0"
                   />
                   <button type="button" className="rounded-xl p-2 text-[#6B7280] transition hover:bg-white hover:text-[#111827]">
@@ -1456,7 +1462,7 @@ export function SchoolChatPanel({
                     type="submit"
                     loading={sending}
                     loadingText="Sending..."
-                    disabled={sending}
+                    disabled={sending || !activeRoomMeta}
                     className="rounded-2xl bg-[#6D28D9] px-4 text-white hover:bg-[#5B21B6]"
                   >
                     <Send className="h-4 w-4" />

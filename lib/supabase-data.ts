@@ -16,7 +16,6 @@ import {
   UserProfile,
 } from "@/types";
 import { GUEST_USER_ID, supabase } from "@/lib/supabase";
-import { DEFAULT_SCHOOL_CHAT_ROOMS } from "@/lib/constants";
 
 type Row = Record<string, unknown>;
 
@@ -146,13 +145,47 @@ function normalizeClassPost(raw: Row): ClassPost {
 function normalizeSchoolMessage(raw: Row): SchoolMessage {
   const user = raw.users as Row | null | undefined;
   const normalizedRoom =
-    typeof raw.room === "string" && raw.room.trim().length > 0 ? raw.room : "general";
+    typeof raw.room === "string" && raw.room.trim().length > 0 ? raw.room : "";
 
   return {
     id: String(raw.id ?? ""),
     schoolId: String(raw.school_id ?? ""),
     room: normalizedRoom,
     userId: String(raw.user_id ?? ""),
+    userName: String(user?.name ?? "Teacher"),
+    userAvatar: user?.avatar ? String(user.avatar) : null,
+    content: String(raw.content ?? ""),
+    parentId: raw.parent_id ? String(raw.parent_id) : null,
+    attachmentUrl: raw.attachment_url ? String(raw.attachment_url) : null,
+    attachmentName: raw.attachment_name ? String(raw.attachment_name) : null,
+    attachmentSize:
+      typeof raw.attachment_size === "number"
+        ? raw.attachment_size
+        : typeof raw.attachment_size === "string"
+          ? Number(raw.attachment_size)
+          : null,
+    attachmentType:
+      raw.attachment_type === "image" || raw.attachment_type === "link" || raw.attachment_type === "file"
+        ? raw.attachment_type
+        : null,
+    createdAt: toIsoDate(raw.created_at),
+  };
+}
+
+function normalizeDirectMessage(raw: Row): SchoolMessage {
+  const user = raw.users as Row | null | undefined;
+  const normalizedRoom =
+    typeof raw.conversation_id === "string" && raw.conversation_id.trim().length > 0
+      ? raw.conversation_id
+      : typeof raw.room === "string" && raw.room.trim().length > 0
+        ? raw.room
+        : "";
+
+  return {
+    id: String(raw.id ?? ""),
+    schoolId: String(raw.school_id ?? ""),
+    room: normalizedRoom,
+    userId: String(raw.sender_id ?? raw.user_id ?? ""),
     userName: String(user?.name ?? "Teacher"),
     userAvatar: user?.avatar ? String(user.avatar) : null,
     content: String(raw.content ?? ""),
@@ -656,45 +689,59 @@ export async function joinClassByInviteCode(inviteCode: string, userId: string) 
   return classRecord;
 }
 
-export async function getSchoolChatConversations(schoolId: string) {
-  const { data, error } = await supabase
+export async function getSchoolChatConversations(schoolId: string, currentUserId: string) {
+  const { data: groupRows, error: groupsError } = await supabase
     .from("school_chat_rooms")
     .select("id, school_id, name, type, member_ids, created_by, created_at")
     .eq("school_id", schoolId)
+    .eq("type", "group")
     .order("created_at", { ascending: true });
 
-  if (error) {
-    const fallback = DEFAULT_SCHOOL_CHAT_ROOMS.map((room) => ({
-      id: room.id,
-      schoolId,
-      name: room.name,
-      type: room.type,
-      memberIds: [],
-      createdBy: null,
-      createdAt: new Date().toISOString(),
-    }));
+  const { data: directRows } = await supabase
+    .from("school_chat_rooms")
+    .select("id, school_id, name, type, member_ids, created_by, created_at")
+    .eq("type", "direct")
+    .contains("member_ids", [currentUserId])
+    .order("created_at", { ascending: true });
 
-    return fallback;
+  if (groupsError && !directRows) {
+    return [];
   }
 
-  const conversations = (data ?? []).map((row) => normalizeSchoolConversation(row as Row));
-  const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
+  const rows = [...(groupRows ?? []), ...(directRows ?? [])] as Row[];
+  const uniqueRows = Array.from(new Map(rows.map((row) => [String(row.id ?? ""), row])).values());
 
-  for (const room of DEFAULT_SCHOOL_CHAT_ROOMS) {
-    if (!byId.has(room.id)) {
-      conversations.unshift({
-        id: room.id,
-        schoolId,
-        name: room.name,
-        type: room.type,
-        memberIds: [],
-        createdBy: null,
-        createdAt: new Date().toISOString(),
-      });
+  return uniqueRows
+    .map((row) => normalizeSchoolConversation(row))
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+}
+
+export function getSchoolChatConversationFeed(
+  schoolId: string,
+  currentUserId: string,
+  onData: (conversations: SchoolChatConversation[]) => void,
+  onError: (error: Error) => void,
+) {
+  const refresh = async () => {
+    try {
+      onData(await getSchoolChatConversations(schoolId, currentUserId));
+    } catch (error) {
+      onError(error instanceof Error ? error : new Error("Could not load school conversations."));
     }
-  }
+  };
 
-  return conversations;
+  void refresh();
+
+  const channel = supabase
+    .channel(`school-chat-rooms-${currentUserId}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "school_chat_rooms" }, () => {
+      void refresh();
+    })
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
 }
 
 export async function createSchoolChatConversation(input: {
@@ -732,13 +779,30 @@ export async function createSchoolChatConversation(input: {
 }
 
 export async function deleteSchoolChatConversation(conversationId: string) {
-  const { error: messagesError } = await supabase
-    .from("school_messages")
-    .delete()
-    .eq("room", conversationId);
+  const { data: conversation } = await supabase
+    .from("school_chat_rooms")
+    .select("id, type")
+    .eq("id", conversationId)
+    .maybeSingle<{ id: string; type: "group" | "direct" }>();
 
-  if (messagesError) {
-    throw new Error(messagesError.message);
+  if (conversation?.type === "direct") {
+    const { error: directMessagesError } = await supabase
+      .from("direct_messages")
+      .delete()
+      .eq("conversation_id", conversationId);
+
+    if (directMessagesError) {
+      throw new Error(directMessagesError.message);
+    }
+  } else {
+    const { error: messagesError } = await supabase
+      .from("school_messages")
+      .delete()
+      .eq("room", conversationId);
+
+    if (messagesError) {
+      throw new Error(messagesError.message);
+    }
   }
 
   const { error } = await supabase
@@ -841,52 +905,95 @@ export async function updateUser(uid: string, updates: Partial<Omit<UserProfile,
   return normalizeUserProfile({ ...(data as Row), school_name: schoolName });
 }
 
+async function loadSchoolGroupMessages(schoolId: string) {
+  const roomAwareQuery = await supabase
+    .from("school_messages")
+    .select("id, school_id, room, user_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at, users(name, avatar)")
+    .eq("school_id", schoolId)
+    .order("created_at", { ascending: true });
+
+  if (!roomAwareQuery.error) {
+    return (roomAwareQuery.data ?? []).map((row) => normalizeSchoolMessage(row as Row));
+  }
+
+  const attachmentAwareFallback = await supabase
+    .from("school_messages")
+    .select("id, school_id, room, user_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at")
+    .eq("school_id", schoolId)
+    .order("created_at", { ascending: true });
+
+  if (!attachmentAwareFallback.error) {
+    const rowsWithUsers = await attachUsers((attachmentAwareFallback.data ?? []) as Row[]);
+    return rowsWithUsers.map((row) => normalizeSchoolMessage(row as Row));
+  }
+
+  const fallbackQuery = await supabase
+    .from("school_messages")
+    .select("id, school_id, room, user_id, content, created_at")
+    .eq("school_id", schoolId)
+    .order("created_at", { ascending: true });
+
+  if (fallbackQuery.error) {
+    throw new Error(fallbackQuery.error.message);
+  }
+
+  const rowsWithUsers = await attachUsers((fallbackQuery.data ?? []) as Row[]);
+  return rowsWithUsers.map((row) => normalizeSchoolMessage(row as Row));
+}
+
+async function loadDirectMessages(currentUserId: string) {
+  const directQuery = await supabase
+    .from("direct_messages")
+    .select("id, conversation_id, sender_id, receiver_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at")
+    .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+    .order("created_at", { ascending: true });
+
+  if (directQuery.error) {
+    throw new Error(directQuery.error.message);
+  }
+
+  const rowsWithUsers = await attachUsers((directQuery.data ?? []) as Row[], "sender_id");
+  return rowsWithUsers.map((row) => normalizeDirectMessage(row as Row));
+}
+
 export function getSchoolMessages(
   schoolId: string,
+  currentUserId: string,
   onData: (messages: SchoolMessage[]) => void,
   onError: (error: Error) => void,
 ) {
   const refresh = async () => {
-    const roomAwareQuery = await supabase
-      .from("school_messages")
-      .select("id, school_id, room, user_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at, users(name, avatar)")
-      .eq("school_id", schoolId)
-      .order("created_at", { ascending: true });
+    try {
+      const [groupMessages, directMessages] = await Promise.all([
+        loadSchoolGroupMessages(schoolId),
+        loadDirectMessages(currentUserId),
+      ]);
 
-    if (!roomAwareQuery.error) {
-      onData((roomAwareQuery.data ?? []).map((row) => normalizeSchoolMessage(row as Row)));
-      return;
+      onData(
+        [...groupMessages, ...directMessages].sort(
+          (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+        ),
+      );
+    } catch (error) {
+      onError(error instanceof Error ? error : new Error("Could not load school chat."));
     }
-
-    const attachmentAwareFallback = await supabase
-      .from("school_messages")
-      .select("id, school_id, room, user_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at")
-      .eq("school_id", schoolId)
-      .order("created_at", { ascending: true });
-
-    if (!attachmentAwareFallback.error) {
-      const rowsWithUsers = await attachUsers((attachmentAwareFallback.data ?? []) as Row[]);
-      onData(rowsWithUsers.map((row) => normalizeSchoolMessage(row as Row)));
-      return;
-    }
-
-    const fallbackQuery = await supabase
-      .from("school_messages")
-      .select("id, school_id, room, user_id, content, created_at")
-      .eq("school_id", schoolId)
-      .order("created_at", { ascending: true });
-
-    if (fallbackQuery.error) {
-      onError(new Error(fallbackQuery.error.message));
-      return;
-    }
-
-    const rowsWithUsers = await attachUsers((fallbackQuery.data ?? []) as Row[]);
-    onData(rowsWithUsers.map((row) => normalizeSchoolMessage(row as Row)));
   };
 
   void refresh();
-  return createRealtimeChannel("school-messages-feed", "school_messages", refresh);
+
+  const channel = supabase
+    .channel(`school-chat-feed-${currentUserId}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "school_messages" }, () => {
+      void refresh();
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "direct_messages" }, () => {
+      void refresh();
+    })
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
 }
 
 function detectChatAttachmentType(file: File | null | undefined) {
@@ -1008,6 +1115,66 @@ export async function createSchoolMessage(input: {
 
   const [rowWithUser] = await attachUsers([fallbackData]);
   return normalizeSchoolMessage(rowWithUser as Row);
+}
+
+export async function createDirectMessage(input: {
+  conversationId: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  parentId?: string | null;
+  file?: File | null;
+}) {
+  let attachmentUrl: string | null = null;
+  let attachmentName: string | null = null;
+  let attachmentType: SchoolMessage["attachmentType"] = null;
+  let attachmentSize: number | null = null;
+  let storagePath = "";
+
+  if (input.file) {
+    storagePath = `chat/${input.senderId}/${Date.now()}-${input.file.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from("resources")
+      .upload(storagePath, input.file, { upsert: false });
+
+    if (uploadError) {
+      throw new Error(uploadError.message);
+    }
+
+    const { data } = supabase.storage.from("resources").getPublicUrl(storagePath);
+    attachmentUrl = data.publicUrl;
+    attachmentName = input.file.name;
+    attachmentType = detectChatAttachmentType(input.file);
+    attachmentSize = input.file.size;
+  }
+
+  const insert = await supabase
+    .from("direct_messages")
+    .insert([
+      {
+        conversation_id: input.conversationId,
+        sender_id: input.senderId,
+        receiver_id: input.receiverId,
+        content: input.content,
+        parent_id: input.parentId ?? null,
+        attachment_url: attachmentUrl,
+        attachment_name: attachmentName,
+        attachment_type: attachmentType,
+        attachment_size: attachmentSize,
+      },
+    ])
+    .select("id, conversation_id, sender_id, receiver_id, content, parent_id, attachment_url, attachment_name, attachment_type, attachment_size, created_at")
+    .single();
+
+  if (insert.error || !insert.data) {
+    if (storagePath) {
+      await supabase.storage.from("resources").remove([storagePath]).catch(() => undefined);
+    }
+    throw new Error(insert.error?.message ?? "Could not send direct message.");
+  }
+
+  const [rowWithUser] = await attachUsers([insert.data as Row], "sender_id");
+  return normalizeDirectMessage(rowWithUser as Row);
 }
 
 export async function uploadAvatar(userId: string, file: File) {

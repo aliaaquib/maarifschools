@@ -82,6 +82,20 @@ create table if not exists public.school_chat_rooms (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists public.direct_messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id text not null references public.school_chat_rooms(id) on delete cascade,
+  sender_id uuid references public.users(id) on delete cascade,
+  receiver_id uuid references public.users(id) on delete cascade,
+  content text,
+  parent_id uuid references public.direct_messages(id) on delete set null,
+  attachment_url text,
+  attachment_name text,
+  attachment_type text check (attachment_type in ('image', 'file', 'link')),
+  attachment_size bigint,
+  created_at timestamp with time zone default now()
+);
+
 alter table public.users
   drop constraint if exists users_school_id_fkey;
 
@@ -107,6 +121,8 @@ create index if not exists school_messages_school_id_idx on public.school_messag
 create index if not exists school_messages_room_idx on public.school_messages (school_id, room, created_at);
 create index if not exists school_messages_parent_id_idx on public.school_messages (parent_id);
 create index if not exists school_chat_rooms_school_id_idx on public.school_chat_rooms (school_id, created_at);
+create index if not exists direct_messages_conversation_id_idx on public.direct_messages (conversation_id, created_at);
+create index if not exists direct_messages_sender_receiver_idx on public.direct_messages (sender_id, receiver_id, created_at);
 
 alter table public.users enable row level security;
 alter table public.schools enable row level security;
@@ -116,6 +132,7 @@ alter table public.resources enable row level security;
 alter table public.resource_versions enable row level security;
 alter table public.school_messages enable row level security;
 alter table public.school_chat_rooms enable row level security;
+alter table public.direct_messages enable row level security;
 
 drop policy if exists "users_dev_all" on public.users;
 create policy "users_dev_all"
@@ -166,18 +183,116 @@ using (true)
 with check (true);
 
 drop policy if exists "school_messages_dev_all" on public.school_messages;
-create policy "school_messages_dev_all"
+drop policy if exists "school_messages_select_school" on public.school_messages;
+create policy "school_messages_select_school"
 on public.school_messages
-for all
-using (true)
-with check (true);
+for select
+using (
+  exists (
+    select 1
+    from public.users viewer
+    where viewer.id = auth.uid()
+      and viewer.school_id = school_messages.school_id
+  )
+);
+
+drop policy if exists "school_messages_insert_school" on public.school_messages;
+create policy "school_messages_insert_school"
+on public.school_messages
+for insert
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1
+    from public.users viewer
+    where viewer.id = auth.uid()
+      and viewer.school_id = school_messages.school_id
+  )
+);
+
+drop policy if exists "school_messages_delete_allowed" on public.school_messages;
+create policy "school_messages_delete_allowed"
+on public.school_messages
+for delete
+using (
+  user_id = auth.uid()
+  or exists (
+    select 1
+    from public.school_chat_rooms room
+    where room.id = school_messages.room
+      and room.type = 'group'
+      and room.created_by = auth.uid()
+  )
+);
 
 drop policy if exists "school_chat_rooms_dev_all" on public.school_chat_rooms;
-create policy "school_chat_rooms_dev_all"
+drop policy if exists "school_chat_rooms_select_visible" on public.school_chat_rooms;
+create policy "school_chat_rooms_select_visible"
 on public.school_chat_rooms
-for all
-using (true)
-with check (true);
+for select
+using (
+  (
+    type = 'group'
+    and exists (
+      select 1
+      from public.users viewer
+      where viewer.id = auth.uid()
+        and viewer.school_id = school_chat_rooms.school_id
+    )
+  )
+  or (
+    type = 'direct'
+    and auth.uid() = any(member_ids)
+  )
+);
+
+drop policy if exists "school_chat_rooms_insert_allowed" on public.school_chat_rooms;
+create policy "school_chat_rooms_insert_allowed"
+on public.school_chat_rooms
+for insert
+with check (
+  created_by = auth.uid()
+  and auth.uid() = any(member_ids)
+  and (
+    (
+      type = 'group'
+      and exists (
+        select 1
+        from public.users viewer
+        where viewer.id = auth.uid()
+          and viewer.school_id = school_chat_rooms.school_id
+      )
+    )
+    or type = 'direct'
+  )
+);
+
+drop policy if exists "school_chat_rooms_delete_allowed" on public.school_chat_rooms;
+create policy "school_chat_rooms_delete_allowed"
+on public.school_chat_rooms
+for delete
+using (
+  (type = 'group' and created_by = auth.uid())
+  or (type = 'direct' and auth.uid() = any(member_ids))
+);
+
+drop policy if exists "direct_messages_select_own" on public.direct_messages;
+create policy "direct_messages_select_own"
+on public.direct_messages
+for select
+using (auth.uid() = sender_id or auth.uid() = receiver_id);
+
+drop policy if exists "direct_messages_insert_own" on public.direct_messages;
+create policy "direct_messages_insert_own"
+on public.direct_messages
+for insert
+with check (auth.uid() = sender_id);
+
+drop policy if exists "direct_messages_delete_own" on public.direct_messages;
+create policy "direct_messages_delete_own"
+on public.direct_messages
+for delete
+using (auth.uid() = sender_id or auth.uid() = receiver_id);
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.users to anon, authenticated;
@@ -188,6 +303,7 @@ grant select, insert, update, delete on public.resources to anon, authenticated;
 grant select, insert, update, delete on public.resource_versions to anon, authenticated;
 grant select, insert, update, delete on public.school_messages to anon, authenticated;
 grant select, insert, update, delete on public.school_chat_rooms to anon, authenticated;
+grant select, insert, update, delete on public.direct_messages to anon, authenticated;
 
 insert into storage.buckets (id, name, public)
 values ('resources', 'resources', true)

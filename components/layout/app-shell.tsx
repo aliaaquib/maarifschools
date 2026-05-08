@@ -30,6 +30,7 @@ import {
   createPost,
   createClass,
   createClassPost,
+  createDirectMessage,
   createSchoolChatConversation,
   createSchoolMessage,
   deleteComment,
@@ -42,7 +43,7 @@ import {
   getClassResources,
   getComments,
   getAllTeachers,
-  getSchoolChatConversations,
+  getSchoolChatConversationFeed,
   getSchoolTeachers,
   getTeacherClasses,
   getVisibleResources,
@@ -173,19 +174,6 @@ export function AppShell({
     [activeProfile.schoolId],
   );
 
-  const mergeConversations = useCallback((primary: SchoolChatConversation[], secondary: SchoolChatConversation[]) => {
-    const merged = [...primary];
-    const existingIds = new Set(primary.map((conversation) => conversation.id));
-
-    for (const conversation of secondary) {
-      if (!existingIds.has(conversation.id)) {
-        merged.push(conversation);
-      }
-    }
-
-    return merged;
-  }, []);
-
   const loadStoredSchoolConversations = useCallback(() => {
     if (typeof window === "undefined" || !schoolConversationStorageKey) {
       return [] as SchoolChatConversation[];
@@ -209,10 +197,7 @@ export function AppShell({
         return;
       }
 
-      const customOnly = conversations.filter(
-        (conversation) => !["general", "grade-3", "science"].includes(conversation.id),
-      );
-      window.localStorage.setItem(schoolConversationStorageKey, JSON.stringify(customOnly));
+      window.localStorage.setItem(schoolConversationStorageKey, JSON.stringify(conversations));
     },
     [schoolConversationStorageKey],
   );
@@ -252,7 +237,7 @@ export function AppShell({
       (error) => setWorkspaceError(toUserFacingError(error, "We couldn't load replies right now.")),
     );
     let unsubscribeSchoolMessages: () => void = () => undefined;
-
+    let unsubscribeConversations: () => void = () => undefined;
     let unsubscribeResources: () => void = () => undefined;
 
     setLoadingResources(true);
@@ -284,15 +269,17 @@ export function AppShell({
           setSelectedClassId(null);
           setLoadingClasses(false);
         });
-      void getSchoolChatConversations(activeProfile.schoolId)
-        .then((nextConversations) => {
-          const merged = mergeConversations(nextConversations, loadStoredSchoolConversations());
-          setSchoolConversations(merged);
-          persistSchoolConversations(merged);
-        })
-        .catch(() => {
+      unsubscribeConversations = getSchoolChatConversationFeed(
+        activeProfile.schoolId,
+        currentUserId,
+        (nextConversations) => {
+          setSchoolConversations(nextConversations);
+          persistSchoolConversations(nextConversations);
+        },
+        () => {
           setSchoolConversations(loadStoredSchoolConversations());
-        });
+        },
+      );
       void getSchoolTeachers(activeProfile.schoolId)
         .then((nextTeachers) => setSchoolTeachers(nextTeachers))
         .catch(() => setSchoolTeachers([]));
@@ -301,6 +288,7 @@ export function AppShell({
         .catch(() => setAllTeachers([]));
       unsubscribeSchoolMessages = getSchoolMessages(
         activeProfile.schoolId,
+        currentUserId,
         (nextMessages) => {
           setSchoolMessages(nextMessages);
           setLoadingSchoolChat(false);
@@ -327,11 +315,14 @@ export function AppShell({
 
     return () => {
       unsubscribeResources();
+      if (typeof unsubscribeConversations === "function") {
+        unsubscribeConversations();
+      }
       unsubscribeSchoolMessages();
       unsubscribePosts();
       unsubscribeComments();
     };
-  }, [activeProfile.schoolId, currentUserId, loadStoredSchoolConversations, mergeConversations, persistSchoolConversations]);
+  }, [activeProfile.schoolId, currentUserId, loadStoredSchoolConversations, persistSchoolConversations]);
 
   useEffect(() => {
     if (!selectedClassId) {
@@ -723,14 +714,34 @@ export function AppShell({
 
     await ensureCurrentUserProfileRecord();
 
-    const createdMessage = await createSchoolMessage({
-      schoolId: activeProfile.schoolId,
-      userId: user.id,
-      content: input.content,
-      room: input.room,
-      parentId: input.parentId,
-      file: input.file,
-    });
+    const activeConversation = schoolConversations.find((conversation) => conversation.id === input.room);
+    const directReceiverId =
+      activeConversation?.type === "direct"
+        ? activeConversation.memberIds.find((memberId) => memberId !== user.id) ?? null
+        : null;
+
+    if (activeConversation?.type === "direct" && !directReceiverId) {
+      throw new Error("We couldn't resolve the recipient for this direct message.");
+    }
+
+    const createdMessage =
+      activeConversation?.type === "direct" && directReceiverId
+        ? await createDirectMessage({
+            conversationId: input.room,
+            senderId: user.id,
+            receiverId: directReceiverId,
+            content: input.content,
+            parentId: input.parentId,
+            file: input.file,
+          })
+        : await createSchoolMessage({
+            schoolId: activeProfile.schoolId,
+            userId: user.id,
+            content: input.content,
+            room: input.room,
+            parentId: input.parentId,
+            file: input.file,
+          });
 
     setSchoolMessages((current) =>
       current.some((message) => message.id === createdMessage.id)
@@ -909,16 +920,19 @@ export function AppShell({
     const previousConversations = schoolConversations;
     const previousMessages = schoolMessages;
 
-    setSchoolConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
+    const nextConversations = schoolConversations.filter((conversation) => conversation.id !== conversationId);
+    setSchoolConversations(nextConversations);
     setSchoolMessages((current) => current.filter((message) => message.room !== conversationId));
+    persistSchoolConversations(nextConversations);
 
     try {
       await deleteSchoolChatConversation(conversationId);
-      setWorkspaceSuccess("Group deleted.");
+      setWorkspaceSuccess("Chat deleted.");
     } catch (error) {
       setSchoolConversations(previousConversations);
       setSchoolMessages(previousMessages);
-      setWorkspaceError(toUserFacingError(error, "Could not delete group."));
+      persistSchoolConversations(previousConversations);
+      setWorkspaceError(toUserFacingError(error, "Could not delete chat."));
     }
   }
 
