@@ -420,6 +420,7 @@ export function SchoolChatPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const headerSearchInputRef = useRef<HTMLInputElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const unreadStorageKey = `teachshare-school-chat-seen:${currentUserId}:${schoolName ?? "school"}`;
 
@@ -525,6 +526,18 @@ export function SchoolChatPanel({
       };
     });
   }, [activeRoomMessages, activeRoomMeta?.id]);
+
+  useEffect(() => {
+    if (!activeRoomMeta?.id) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 40);
+
+    return () => window.clearTimeout(timer);
+  }, [activeRoomMeta?.id, activeRoomMessages.length]);
 
   useEffect(() => {
     if (!isHeaderSearchOpen) {
@@ -1389,6 +1402,7 @@ export function SchoolChatPanel({
                       })}
                     </div>
                   ))}
+                  <div ref={messageEndRef} />
                 </div>
               )}
             </div>

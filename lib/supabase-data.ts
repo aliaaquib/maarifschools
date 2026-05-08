@@ -739,7 +739,12 @@ export function getSchoolChatConversationFeed(
     })
     .subscribe();
 
+  const interval = window.setInterval(() => {
+    void refresh();
+  }, 4000);
+
   return () => {
+    window.clearInterval(interval);
     void supabase.removeChannel(channel);
   };
 }
@@ -991,7 +996,12 @@ export function getSchoolMessages(
     })
     .subscribe();
 
+  const interval = window.setInterval(() => {
+    void refresh();
+  }, 4000);
+
   return () => {
+    window.clearInterval(interval);
     void supabase.removeChannel(channel);
   };
 }
