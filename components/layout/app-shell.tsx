@@ -88,10 +88,12 @@ export function AppShell({
   initialActiveItem = "dashboard",
   initialClassId = null,
   classViewMode = "overview",
+  initialCreateClassOpen = false,
 }: {
   initialActiveItem?: NavigationItemId;
   initialClassId?: string | null;
   classViewMode?: "overview" | "detail";
+  initialCreateClassOpen?: boolean;
 }) {
   const router = useRouter();
   const { user, profile, logOut, saveProfile } = useAuth();
@@ -1122,6 +1124,7 @@ export function AppShell({
               setActiveItem("all");
             }}
             onOpenMyClasses={handleBackToClasses}
+            onCreateClass={() => router.push("/app/classes?create=1")}
             onInviteStudents={handleInviteStudents}
             onOpenClass={handleOpenClass}
           />
@@ -1130,6 +1133,7 @@ export function AppShell({
         return (
           <ClassesWorkspace
             mode={classViewMode}
+            initialCreateOpen={initialCreateClassOpen}
             profile={activeProfile}
             classes={classes}
             loading={loadingClasses}

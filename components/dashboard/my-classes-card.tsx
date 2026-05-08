@@ -11,6 +11,7 @@ import { ClassRecord } from "@/types";
 interface MyClassesCardProps {
   classes: ClassRecord[];
   onOpenAll: () => void;
+  onCreateClass: () => void;
   onOpenClass: (classId: string) => void;
   onInviteClass: (classId: string) => void;
 }
@@ -52,7 +53,7 @@ function getClassStatus(classItem: ClassRecord): "Today" | "Upcoming" | "Active"
   return "Upcoming";
 }
 
-export function MyClassesCard({ classes, onOpenAll, onOpenClass, onInviteClass }: MyClassesCardProps) {
+export function MyClassesCard({ classes, onOpenAll, onCreateClass, onOpenClass, onInviteClass }: MyClassesCardProps) {
   const visibleClasses = classes.slice(0, 4);
 
   return (
@@ -141,8 +142,8 @@ export function MyClassesCard({ classes, onOpenAll, onOpenClass, onInviteClass }
             title="Create your first class"
             description="Set up a classroom, invite students, and organize lessons in one calm workspace."
             action={
-              <Button onClick={onOpenAll}>
-                Open classes
+              <Button onClick={onCreateClass}>
+                Create Class
               </Button>
             }
           />

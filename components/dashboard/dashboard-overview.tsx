@@ -21,6 +21,7 @@ interface DashboardOverviewProps {
   onExploreResources: () => void;
   onSelectResource: (resource: ResourceRecord) => void;
   onOpenMyClasses: () => void;
+  onCreateClass: () => void;
   onInviteStudents: (classId: string) => void;
   onOpenClass: (classId: string) => void;
   currentUserId: string;
@@ -66,6 +67,7 @@ export function DashboardOverview({
   onExploreResources,
   onSelectResource,
   onOpenMyClasses,
+  onCreateClass,
   onInviteStudents,
   onOpenClass,
   currentUserId,
@@ -216,6 +218,7 @@ export function DashboardOverview({
         <MyClassesCard
           classes={classes}
           onOpenAll={onOpenMyClasses}
+          onCreateClass={onCreateClass}
           onInviteClass={onInviteStudents}
           onOpenClass={onOpenClass}
         />

@@ -33,6 +33,7 @@ type ClassTab = "stream" | "resources" | "discussions" | "students";
 
 interface ClassesWorkspaceProps {
   mode: "overview" | "detail";
+  initialCreateOpen?: boolean;
   profile: UserProfile;
   classes: ClassRecord[];
   loading: boolean;
@@ -81,6 +82,7 @@ function getClassTone(index: number) {
 
 export function ClassesWorkspace({
   mode,
+  initialCreateOpen = false,
   classes,
   loading,
   selectedClassId,
@@ -98,7 +100,7 @@ export function ClassesWorkspace({
   onAddResourceToClass,
   onRemoveStudent,
 }: ClassesWorkspaceProps) {
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(initialCreateOpen);
   const [createError, setCreateError] = useState("");
   const [creatingClass, setCreatingClass] = useState(false);
   const [classTab, setClassTab] = useState<ClassTab>("stream");
@@ -115,6 +117,10 @@ export function ClassesWorkspace({
   useEffect(() => {
     setInviteClassId(externalInviteClassId);
   }, [externalInviteClassId]);
+
+  useEffect(() => {
+    setIsCreateOpen(initialCreateOpen);
+  }, [initialCreateOpen]);
 
   const selectedClass = classes.find((item) => item.id === selectedClassId) ?? null;
   const activeClassId = selectedClass?.id ?? null;
