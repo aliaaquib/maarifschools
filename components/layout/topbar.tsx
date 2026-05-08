@@ -1,11 +1,12 @@
 "use client";
 
-import { Bell, ChevronDown, MessageCircle, Search, Upload, Users } from "lucide-react";
+import { Bell, ChevronDown, MessageCircle, Search, Sparkles, Upload, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { SidebarMobileTrigger } from "@/components/layout/sidebar";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { NotificationItem } from "@/types";
 import { formatRelativeDate } from "@/lib/utils";
 import { initials } from "@/lib/utils";
@@ -28,6 +29,7 @@ interface TopbarProps {
 export function Topbar({
   search,
   onSearchChange,
+  onOpenLessonPlanner,
   userName,
   userAvatar,
   isMobileSidebarOpen,
@@ -95,6 +97,15 @@ export function Topbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2 md:gap-3">
+        <Button
+          variant="outline"
+          className="hidden h-10 rounded-2xl border-[#E5E7EB] bg-white px-4 text-[#111827] hover:bg-[#F9FAFB] md:inline-flex"
+          onClick={onOpenLessonPlanner}
+        >
+          <Sparkles className="mr-2 h-4 w-4" />
+          Generate lesson plan
+        </Button>
+
         <div className="relative" ref={notificationsRef}>
           <button
             className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#111827] transition-all duration-150 hover:bg-[#F3F4F6]"
@@ -155,6 +166,16 @@ export function Topbar({
             </Card>
           ) : null}
         </div>
+
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 rounded-full border-[#E5E7EB] bg-white text-[#111827] hover:bg-[#F9FAFB] md:hidden"
+          onClick={onOpenLessonPlanner}
+          aria-label="Generate lesson plan"
+        >
+          <Sparkles className="h-4 w-4" />
+        </Button>
 
         <div className="hidden items-center gap-3 rounded-full pl-1 pr-1 md:flex">
           <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#111827] text-sm font-semibold text-white">

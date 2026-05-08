@@ -1,13 +1,10 @@
 "use client";
 
-import { BookMarked, Download, ExternalLink, Eye, FileText, Sparkles, Trash2, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { BookMarked, Download, ExternalLink, Eye, FileText, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { toUserFacingError } from "@/lib/errors";
 import { ResourceRecord } from "@/types";
 import { formatRelativeDate } from "@/lib/utils";
 
@@ -21,10 +18,6 @@ interface ResourceDetailProps {
 }
 
 export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, onDelete, onClose }: ResourceDetailProps) {
-  const [topic, setTopic] = useState("");
-  const [lessonPlan, setLessonPlan] = useState("");
-  const [loadingLesson, setLoadingLesson] = useState(false);
-  const [error, setError] = useState("");
   const isOwner = resource && currentUserId ? resource.userId === currentUserId : false;
   const views = resource?.viewCount ?? 0;
   const downloads = resource?.downloadCount ?? 0;
@@ -94,40 +87,6 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
         </div>
       </div>
     );
-  }
-
-  async function handleGenerateLesson(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const nextTopic = topic.trim() || resource?.title || "";
-    if (!nextTopic) {
-      setError("Enter a topic first.");
-      return;
-    }
-
-    setLoadingLesson(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/generate-lesson", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ topic: nextTopic }),
-      });
-
-      const payload = (await response.json()) as { lessonPlan?: string; error?: string };
-      if (!response.ok || !payload.lessonPlan) {
-        throw new Error(payload.error ?? "We could not generate the lesson plan.");
-      }
-
-      setLessonPlan(payload.lessonPlan);
-    } catch (requestError) {
-      setError(toUserFacingError(requestError, "We could not generate the lesson plan."));
-    } finally {
-      setLoadingLesson(false);
-    }
   }
 
   if (!resource) {
@@ -217,34 +176,6 @@ export function ResourceDetail({ resource, currentUserId, onDownload, onOpen, on
               </Button>
             ) : null}
           </div>
-
-          <form className="space-y-3 rounded-2xl border border-border bg-card p-4" onSubmit={handleGenerateLesson}>
-            <div>
-              <p className="text-sm font-medium text-foreground">Generate lesson plan</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Enter a topic to create a classroom-ready lesson outline.
-              </p>
-            </div>
-            <Input
-              value={topic}
-              onChange={(event) => setTopic(event.target.value)}
-              placeholder="Enter topic"
-            />
-            {error ? <p className="text-sm text-foreground/80">{error}</p> : null}
-            <Button className="w-full justify-start" disabled={loadingLesson} type="submit">
-              <Sparkles className="h-4 w-4" />
-              {loadingLesson ? "Generating..." : "Generate Lesson Plan"}
-            </Button>
-          </form>
-
-          {lessonPlan ? (
-            <div className="rounded-2xl border border-border bg-muted p-4">
-              <p className="text-sm font-medium text-foreground">Lesson plan</p>
-              <pre className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">
-                {lessonPlan}
-              </pre>
-            </div>
-          ) : null}
         </div>
       </Card>
       </div>
