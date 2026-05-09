@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { reportError } from "@/lib/errors";
+
 function buildFallbackLessonPlan(topic: string) {
   return [
     `Cambridge Lesson Plan`,
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!response.ok) {
-      console.error("Gemini request failed", await response.text());
+      reportError(await response.text(), "Gemini request failed");
       return NextResponse.json(
         {
           error: "We could not generate the lesson plan right now.",
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
       source: "gemini",
     });
   } catch (error) {
-    console.error("Lesson generation failed", error);
+    reportError(error, "Lesson generation failed");
     return NextResponse.json(
       {
         error: "We could not generate the lesson plan right now.",

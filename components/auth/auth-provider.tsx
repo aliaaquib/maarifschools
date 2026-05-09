@@ -5,7 +5,7 @@ import { createContext, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 
 import { createUserProfile, ensureUserProfile, getUserProfile, updateUser } from "@/lib/supabase-data";
-import { toUserFacingError } from "@/lib/errors";
+import { reportError, toUserFacingError } from "@/lib/errors";
 import {
   GUEST_USER_ID,
   getSupabaseConnectionErrorMessage,
@@ -194,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(createdProfile);
         }
       } catch (error) {
-        console.error("Failed to sync Supabase user profile", error);
+        reportError(error, "Failed to sync Supabase user profile");
         if (isActive && syncToken === syncTokenRef.current) {
           if (isNetworkFetchError(error)) {
             setProfile(null);
@@ -241,7 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         void syncProfile(sessionResult.data.session?.user ?? null);
       } catch (error) {
-        console.error("Failed to bootstrap Supabase session", error);
+        reportError(error, "Failed to bootstrap Supabase session");
         if (!isActive || bootstrapCompleteRef.current) {
           return;
         }
@@ -268,7 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       async signUp({ name, email, password, schoolId }) {
         if (!isSupabaseConfigured) {
-          console.error("Missing Supabase env vars", missingSupabaseEnvVars);
+          reportError(missingSupabaseEnvVars, "Missing Supabase env vars");
           throw new Error("This service is not ready yet. Please try again in a moment.");
         }
 
@@ -317,7 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async signIn({ email, password }) {
         if (!isSupabaseConfigured) {
-          console.error("Missing Supabase env vars", missingSupabaseEnvVars);
+          reportError(missingSupabaseEnvVars, "Missing Supabase env vars");
           throw new Error("This service is not ready yet. Please try again in a moment.");
         }
 
@@ -336,7 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async requestPasswordReset(email) {
         if (!isSupabaseConfigured) {
-          console.error("Missing Supabase env vars", missingSupabaseEnvVars);
+          reportError(missingSupabaseEnvVars, "Missing Supabase env vars");
           throw new Error("This service is not ready yet. Please try again in a moment.");
         }
 
@@ -359,7 +359,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async updatePassword(password) {
         if (!isSupabaseConfigured) {
-          console.error("Missing Supabase env vars", missingSupabaseEnvVars);
+          reportError(missingSupabaseEnvVars, "Missing Supabase env vars");
           throw new Error("This service is not ready yet. Please try again in a moment.");
         }
 
