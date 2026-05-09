@@ -133,6 +133,6 @@ on public.direct_messages
 for delete
 using (auth.uid() = sender_id or auth.uid() = receiver_id);
 
-grant select, insert, update, delete on public.direct_messages to anon, authenticated;
+grant select, insert, delete on public.direct_messages to authenticated;
 
 notify pgrst, 'reload schema';

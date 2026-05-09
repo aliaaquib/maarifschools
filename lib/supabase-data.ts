@@ -19,12 +19,70 @@ import { GUEST_USER_ID, supabase } from "@/lib/supabase";
 
 type Row = Record<string, unknown>;
 
+const MAX_RESOURCE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+const MAX_CHAT_FILE_SIZE_BYTES = 15 * 1024 * 1024;
+const MAX_AVATAR_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const BLOCKED_UPLOAD_EXTENSIONS = new Set([
+  "exe",
+  "bat",
+  "cmd",
+  "sh",
+  "msi",
+  "apk",
+  "dmg",
+  "pkg",
+  "com",
+  "scr",
+  "js",
+  "mjs",
+  "cjs",
+  "html",
+  "htm",
+  "svg",
+]);
+
 function toIsoDate(value: unknown) {
   if (typeof value === "string" && value) {
     return value;
   }
 
   return new Date().toISOString();
+}
+
+function getFileExtension(fileName: string) {
+  const parts = fileName.toLowerCase().split(".");
+  return parts.length > 1 ? parts.pop() ?? "" : "";
+}
+
+function sanitizeFileName(fileName: string) {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
+function assertUploadIsSafe(file: File, options: { maxBytes: number; allowSvg?: boolean }) {
+  if (file.size > options.maxBytes) {
+    throw new Error(`This file is too large. Please upload a file smaller than ${Math.round(options.maxBytes / (1024 * 1024))} MB.`);
+  }
+
+  const extension = getFileExtension(file.name);
+  if (BLOCKED_UPLOAD_EXTENSIONS.has(extension) && !(options.allowSvg && extension === "svg")) {
+    throw new Error("This file type is not allowed for upload.");
+  }
+}
+
+function buildStoragePath(parts: string[]) {
+  return parts.map((part) => sanitizeFileName(part)).join("/");
+}
+
+function startVisibilityAwarePolling(refresh: () => void, intervalMs: number) {
+  const interval = window.setInterval(() => {
+    if (document.visibilityState === "visible") {
+      refresh();
+    }
+  }, intervalMs);
+
+  return () => {
+    window.clearInterval(interval);
+  };
 }
 
 function detectFileType(input: { file?: File | null; externalUrl?: string }) {
@@ -751,12 +809,12 @@ export function getSchoolChatConversationFeed(
     })
     .subscribe();
 
-  const interval = window.setInterval(() => {
+  const stopPolling = startVisibilityAwarePolling(() => {
     void refresh();
   }, 4000);
 
   return () => {
-    window.clearInterval(interval);
+    stopPolling();
     void supabase.removeChannel(channel);
   };
 }
@@ -1008,12 +1066,12 @@ export function getSchoolMessages(
     })
     .subscribe();
 
-  const interval = window.setInterval(() => {
+  const stopPolling = startVisibilityAwarePolling(() => {
     void refresh();
   }, 4000);
 
   return () => {
-    window.clearInterval(interval);
+    stopPolling();
     void supabase.removeChannel(channel);
   };
 }
@@ -1045,7 +1103,8 @@ export async function createSchoolMessage(input: {
   let storagePath = "";
 
   if (input.file) {
-    storagePath = `chat/${input.userId}/${Date.now()}-${input.file.name}`;
+    assertUploadIsSafe(input.file, { maxBytes: MAX_CHAT_FILE_SIZE_BYTES });
+    storagePath = buildStoragePath(["chat", input.userId, `${Date.now()}-${input.file.name}`]);
     const { error: uploadError } = await supabase.storage
       .from("resources")
       .upload(storagePath, input.file, { upsert: false });
@@ -1154,7 +1213,8 @@ export async function createDirectMessage(input: {
   let storagePath = "";
 
   if (input.file) {
-    storagePath = `chat/${input.senderId}/${Date.now()}-${input.file.name}`;
+    assertUploadIsSafe(input.file, { maxBytes: MAX_CHAT_FILE_SIZE_BYTES });
+    storagePath = buildStoragePath(["chat", input.senderId, `${Date.now()}-${input.file.name}`]);
     const { error: uploadError } = await supabase.storage
       .from("resources")
       .upload(storagePath, input.file, { upsert: false });
@@ -1200,7 +1260,12 @@ export async function createDirectMessage(input: {
 }
 
 export async function uploadAvatar(userId: string, file: File) {
-  const path = `avatars/${userId}/${Date.now()}-${file.name}`;
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Please upload an image file for your profile photo.");
+  }
+
+  assertUploadIsSafe(file, { maxBytes: MAX_AVATAR_FILE_SIZE_BYTES });
+  const path = buildStoragePath(["avatars", userId, `${Date.now()}-${file.name}`]);
   const { error: uploadError } = await supabase.storage.from("resources").upload(path, file, {
     upsert: true,
   });
@@ -1423,12 +1488,12 @@ export function getVisibleResources(
 
   void refresh();
   const unsubscribeRealtime = createRealtimeChannel("resources-feed", "resources", refresh);
-  const interval = window.setInterval(() => {
+  const stopPolling = startVisibilityAwarePolling(() => {
     void refresh();
   }, 4000);
 
   return () => {
-    window.clearInterval(interval);
+    stopPolling();
     unsubscribeRealtime();
   };
 }
@@ -1442,7 +1507,8 @@ export async function createResource(input: CreateResourceInput & { userId: stri
   let storagePath = "";
 
   if (input.file) {
-    storagePath = `files/${input.userId}/${Date.now()}-${input.file.name}`;
+    assertUploadIsSafe(input.file, { maxBytes: MAX_RESOURCE_FILE_SIZE_BYTES });
+    storagePath = buildStoragePath(["files", input.userId, `${Date.now()}-${input.file.name}`]);
     const { error: uploadError } = await supabase.storage
       .from("resources")
       .upload(storagePath, input.file, { upsert: false });
@@ -1548,9 +1614,19 @@ export async function toggleResourceReaction(
     ? currentValues.filter((value) => value !== userId)
     : [...currentValues, userId];
 
+  const rpcResult = await supabase.rpc("toggle_resource_reaction", {
+    target_resource_id: resource.id,
+    target_field: field,
+    actor_id: userId,
+  });
+
+  if (!rpcResult.error) {
+    return;
+  }
+
   const { error } = await supabase.from("resources").update({ [field]: nextValues }).eq("id", resource.id);
   if (error) {
-    throw new Error(error.message);
+    throw new Error(rpcResult.error.message || error.message);
   }
 }
 
@@ -1620,9 +1696,19 @@ export async function togglePostReaction(
     ? currentValues.filter((value) => value !== userId)
     : [...currentValues, userId];
 
+  const rpcResult = await supabase.rpc("toggle_post_reaction", {
+    target_post_id: post.id,
+    target_field: field,
+    actor_id: userId,
+  });
+
+  if (!rpcResult.error) {
+    return;
+  }
+
   const { error } = await supabase.from("posts").update({ [field]: nextValues }).eq("id", post.id);
   if (error) {
-    throw new Error(error.message);
+    throw new Error(rpcResult.error.message || error.message);
   }
 }
 

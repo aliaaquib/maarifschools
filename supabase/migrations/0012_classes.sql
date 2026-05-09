@@ -51,36 +51,206 @@ alter table public.class_resources enable row level security;
 alter table public.class_posts enable row level security;
 
 drop policy if exists "classes_dev_all" on public.classes;
-create policy "classes_dev_all"
+drop policy if exists "classes_select_visible" on public.classes;
+create policy "classes_select_visible"
 on public.classes
-for all
-using (true)
-with check (true);
+for select
+using (
+  teacher_id = auth.uid()
+  or exists (
+    select 1
+    from public.class_members member
+    where member.class_id = classes.id
+      and member.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "classes_insert_own" on public.classes;
+create policy "classes_insert_own"
+on public.classes
+for insert
+with check (
+  teacher_id = auth.uid()
+  and exists (
+    select 1
+    from public.users viewer
+    where viewer.id = auth.uid()
+      and viewer.school_id = classes.school_id
+  )
+);
+
+drop policy if exists "classes_update_own" on public.classes;
+create policy "classes_update_own"
+on public.classes
+for update
+using (teacher_id = auth.uid())
+with check (teacher_id = auth.uid());
+
+drop policy if exists "classes_delete_own" on public.classes;
+create policy "classes_delete_own"
+on public.classes
+for delete
+using (teacher_id = auth.uid());
 
 drop policy if exists "class_members_dev_all" on public.class_members;
-create policy "class_members_dev_all"
+drop policy if exists "class_members_select_visible" on public.class_members;
+create policy "class_members_select_visible"
 on public.class_members
-for all
-using (true)
-with check (true);
+for select
+using (
+  exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_members.class_id
+      and (
+        class_record.teacher_id = auth.uid()
+        or exists (
+          select 1
+          from public.class_members member
+          where member.class_id = class_members.class_id
+            and member.user_id = auth.uid()
+        )
+      )
+  )
+);
+
+drop policy if exists "class_members_insert_allowed" on public.class_members;
+create policy "class_members_insert_allowed"
+on public.class_members
+for insert
+with check (
+  user_id = auth.uid()
+  or exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_members.class_id
+      and class_record.teacher_id = auth.uid()
+  )
+);
+
+drop policy if exists "class_members_delete_allowed" on public.class_members;
+create policy "class_members_delete_allowed"
+on public.class_members
+for delete
+using (
+  user_id = auth.uid()
+  or exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_members.class_id
+      and class_record.teacher_id = auth.uid()
+  )
+);
 
 drop policy if exists "class_resources_dev_all" on public.class_resources;
-create policy "class_resources_dev_all"
+drop policy if exists "class_resources_select_visible" on public.class_resources;
+create policy "class_resources_select_visible"
 on public.class_resources
-for all
-using (true)
-with check (true);
+for select
+using (
+  exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_resources.class_id
+      and (
+        class_record.teacher_id = auth.uid()
+        or exists (
+          select 1
+          from public.class_members member
+          where member.class_id = class_resources.class_id
+            and member.user_id = auth.uid()
+        )
+      )
+  )
+);
+
+drop policy if exists "class_resources_insert_allowed" on public.class_resources;
+create policy "class_resources_insert_allowed"
+on public.class_resources
+for insert
+with check (
+  exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_resources.class_id
+      and class_record.teacher_id = auth.uid()
+  )
+);
+
+drop policy if exists "class_resources_delete_allowed" on public.class_resources;
+create policy "class_resources_delete_allowed"
+on public.class_resources
+for delete
+using (
+  exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_resources.class_id
+      and class_record.teacher_id = auth.uid()
+  )
+);
 
 drop policy if exists "class_posts_dev_all" on public.class_posts;
-create policy "class_posts_dev_all"
+drop policy if exists "class_posts_select_visible" on public.class_posts;
+create policy "class_posts_select_visible"
 on public.class_posts
-for all
-using (true)
-with check (true);
+for select
+using (
+  exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_posts.class_id
+      and (
+        class_record.teacher_id = auth.uid()
+        or exists (
+          select 1
+          from public.class_members member
+          where member.class_id = class_posts.class_id
+            and member.user_id = auth.uid()
+        )
+      )
+  )
+);
 
-grant select, insert, update, delete on public.classes to anon, authenticated;
-grant select, insert, update, delete on public.class_members to anon, authenticated;
-grant select, insert, update, delete on public.class_resources to anon, authenticated;
-grant select, insert, update, delete on public.class_posts to anon, authenticated;
+drop policy if exists "class_posts_insert_allowed" on public.class_posts;
+create policy "class_posts_insert_allowed"
+on public.class_posts
+for insert
+with check (
+  author_id = auth.uid()
+  and exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_posts.class_id
+      and (
+        class_record.teacher_id = auth.uid()
+        or exists (
+          select 1
+          from public.class_members member
+          where member.class_id = class_posts.class_id
+            and member.user_id = auth.uid()
+        )
+      )
+  )
+);
+
+drop policy if exists "class_posts_delete_allowed" on public.class_posts;
+create policy "class_posts_delete_allowed"
+on public.class_posts
+for delete
+using (
+  author_id = auth.uid()
+  or exists (
+    select 1
+    from public.classes class_record
+    where class_record.id = class_posts.class_id
+      and class_record.teacher_id = auth.uid()
+  )
+);
+
+grant select, insert, update, delete on public.classes to authenticated;
+grant select, insert, update, delete on public.class_members to authenticated;
+grant select, insert, update, delete on public.class_resources to authenticated;
+grant select, insert, update, delete on public.class_posts to authenticated;
 
 notify pgrst, 'reload schema';
