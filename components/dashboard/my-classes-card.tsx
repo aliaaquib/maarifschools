@@ -27,32 +27,6 @@ function getTone(index: number) {
   return tones[index % tones.length];
 }
 
-function getStatusTone(status: "Today" | "Upcoming" | "Active") {
-  if (status === "Today") {
-    return "bg-[#EEF2FF] text-[#4F46E5]";
-  }
-
-  if (status === "Upcoming") {
-    return "bg-[#ECFDF5] text-[#166534]";
-  }
-
-  return "bg-[#F5F3FF] text-[#6D28D9]";
-}
-
-function getClassStatus(classItem: ClassRecord): "Today" | "Upcoming" | "Active" {
-  const created = new Date(classItem.createdAt);
-  const now = new Date();
-  if (created.toDateString() === now.toDateString()) {
-    return "Today";
-  }
-
-  if (classItem.studentCount > 0) {
-    return "Active";
-  }
-
-  return "Upcoming";
-}
-
 export function MyClassesCard({ classes, onOpenAll, onCreateClass, onOpenClass, onInviteClass }: MyClassesCardProps) {
   const visibleClasses = classes.slice(0, 4);
 
@@ -72,7 +46,6 @@ export function MyClassesCard({ classes, onOpenAll, onCreateClass, onOpenClass, 
       {visibleClasses.length > 0 ? (
         <div className="mt-4 space-y-4">
           {visibleClasses.map((classItem, index) => {
-            const status = getClassStatus(classItem);
             return (
               <div
                 key={classItem.id}
@@ -87,16 +60,11 @@ export function MyClassesCard({ classes, onOpenAll, onCreateClass, onOpenClass, 
                     <BookOpen className="h-4.5 w-4.5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[#111827]">{classItem.name}</p>
-                        <p className="mt-1 text-sm text-[#6B7280]">
-                          {classItem.subject} • {classItem.grade}
-                        </p>
-                      </div>
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${getStatusTone(status)}`}>
-                        {status}
-                      </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-[#111827]">{classItem.name}</p>
+                      <p className="mt-1 text-sm text-[#6B7280]">
+                        {classItem.subject} • {classItem.grade}
+                      </p>
                     </div>
 
                     <div className="mt-3 space-y-2 text-xs text-[#6B7280]">

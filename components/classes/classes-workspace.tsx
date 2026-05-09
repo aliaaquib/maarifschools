@@ -63,12 +63,6 @@ interface ClassesWorkspaceProps {
   onRemoveStudent: (classId: string, userId: string) => Promise<void>;
 }
 
-function getBadgeTone(label: string) {
-  if (label === "Today") return "bg-[#EEF2FF] text-[#4F46E5]";
-  if (label === "Live") return "bg-[#ECFDF5] text-[#166534]";
-  return "bg-[#F3F4F6] text-[#6B7280]";
-}
-
 function getClassTone(index: number) {
   const tones = [
     "from-[#F5F3FF] to-[#EDE9FE]",
@@ -254,7 +248,6 @@ export function ClassesWorkspace({
   ) : (
     <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
       {filteredClasses.map((classItem, index) => {
-        const status = classItem.studentCount > 0 ? "Upcoming" : "Planning";
         return (
           <Card
             key={classItem.id}
@@ -263,16 +256,11 @@ export function ClassesWorkspace({
             <button type="button" className="block w-full text-left" onClick={() => onOpenClass(classItem.id)}>
               <div className={`h-24 bg-gradient-to-br ${getClassTone(index)}`} />
               <div className="space-y-4 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-lg font-semibold text-[#111827]">{classItem.name}</h3>
-                    <p className="mt-1 text-sm text-[#6B7280]">
-                      {classItem.subject} • {classItem.grade}
-                    </p>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${getBadgeTone(status)}`}>
-                    {status}
-                  </span>
+                <div className="min-w-0">
+                  <h3 className="truncate text-lg font-semibold text-[#111827]">{classItem.name}</h3>
+                  <p className="mt-1 text-sm text-[#6B7280]">
+                    {classItem.subject} • {classItem.grade}
+                  </p>
                 </div>
 
                 <div className="space-y-2 text-sm text-[#6B7280]">
