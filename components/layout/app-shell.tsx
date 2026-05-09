@@ -766,6 +766,7 @@ export function AppShell({
       current.some((post) => post.id === createdPost.id) ? current : [createdPost, ...current],
     );
     setWorkspaceSuccess("Post published.");
+    return createdPost;
   }
 
   async function handleCreateComment(input: { postId: string; body: string }) {
